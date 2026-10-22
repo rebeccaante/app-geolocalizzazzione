@@ -1,3 +1,17 @@
+// Popola automaticamente il menu degli anni dal 2024 al 2060
+const selectAnno = document.getElementById('selectAnno');
+if (selectAnno) {
+    selectAnno.innerHTML = ''; // Svuota opzioni esistenti
+    const annoCorrente = new Date().getFullYear();
+    
+    for (let anno = 2024; anno <= 2060; anno++) {
+        const option = document.createElement('option');
+        option.value = anno;
+        option.textContent = anno;
+        if (anno === annoCorrente) option.selected = true; // Seleziona l'anno corrente di default
+        selectAnno.appendChild(option);
+    }
+}
 const SUPABASE_URL = 'https://fasjhqmnzxhtnpiuvzdk.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_EqZTCd8mOinAbEXk2kYoIw_PTAOvGOv';
 const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
