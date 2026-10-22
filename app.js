@@ -1,4 +1,4 @@
-// Popola automaticamente il menu degli anni dal 2024 al 2060
+// Popola automaticamente il menu degli anni dal 2026 al 2060
 const selectAnno = document.getElementById('selectAnno');
 if (selectAnno) {
     selectAnno.innerHTML = ''; // Svuota opzioni esistenti
