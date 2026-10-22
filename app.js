@@ -4,7 +4,7 @@ if (selectAnno) {
     selectAnno.innerHTML = ''; // Svuota opzioni esistenti
     const annoCorrente = new Date().getFullYear();
     
-    for (let anno = 2024; anno <= 2060; anno++) {
+    for (let anno = 2026; anno <= 2060; anno++) {
         const option = document.createElement('option');
         option.value = anno;
         option.textContent = anno;
