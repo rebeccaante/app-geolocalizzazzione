@@ -3,7 +3,7 @@ const SUPABASE_URL = 'https://fasjhqmnzxhtnpiuvzdk.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_EqZTCd8mOinAbEXk2kYoIw_PTAOvGOv';
 const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-/ 2. POPOLAMENTO ANNI (2026 - 2060)
+// 2. POPOLAMENTO ANNI (2026 - 2060)
 document.addEventListener('DOMContentLoaded', () => {
     const selectAnno = document.getElementById('selectAnno');
     if (selectAnno) {
@@ -20,7 +20,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 });
 
-// 3. REGOLAMENTO QTECH S.R.L.
+// 3. REGOLAMENTO QTECH S.R.L. (Calcolo Target Ore)
 function calcolaOreTarget(km, pernottamento) {
     if (pernottamento || km <= 40) return 8.0;
     if (km <= 100) return 7.5;
@@ -28,7 +28,7 @@ function calcolaOreTarget(km, pernottamento) {
     return 8.0;
 }
 
-// 4. CONSULTAZIONE STORICO
+// 4. CONSULTAZIONE STORICO MESE / ANNO DA SUPABASE
 document.getElementById('btnCaricaStorico').addEventListener('click', async () => {
     const mese = parseInt(document.getElementById('selectMese').value);
     const anno = parseInt(document.getElementById('selectAnno').value);
@@ -56,7 +56,7 @@ document.getElementById('btnCaricaStorico').addEventListener('click', async () =
     renderTabella(timbrature || []);
 });
 
-// 5. CARICAMENTO ED ELABORAZIONE SPECIFICA PER IL VOSTRO EXCEL
+// 5. CARICAMENTO, LETTURA EXCEL ED ELABORAZIONE TIMBRATURE
 document.getElementById('btnElabora').addEventListener('click', async () => {
     const fileInput = document.getElementById('fileInput');
     const file = fileInput.files[0];
@@ -75,7 +75,7 @@ document.getElementById('btnElabora').addEventListener('click', async () => {
     reader.onload = async (e) => {
         try {
             const data = new Uint8Array(e.target.result);
-            // IMPORTANTE: cellDates: true converte correttamente le date dell'Excel
+            // cellDates: true garantisce che la data rimanga reale e non convertita in 1970
             const workbook = XLSX.read(data, { type: 'array', cellDates: true });
             const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
             const righeGrezze = XLSX.utils.sheet_to_json(firstSheet);
@@ -114,7 +114,7 @@ document.getElementById('btnElabora').addEventListener('click', async () => {
                 report = newReport;
             }
 
-            // Lettura e Normalizzazione specifica per la struttura del vostro file
+            // Mappatura esatta sui nomi delle colonne del vostro Excel
             const righeNormalizzate = righeGrezze.map(r => {
                 const cognome = (r['Cognome'] || '').toString().trim();
                 const nome = (r['Nome'] || '').toString().trim();
@@ -132,7 +132,7 @@ document.getElementById('btnElabora').addEventListener('click', async () => {
                 return { dipendente, verso, dataOra, cantiere, km };
             }).filter(r => r.dipendente && r.dataOra && !isNaN(r.dataOra.getTime()));
 
-            // Ordina per data e ora crescente
+            // Ordina cronologicamente
             righeNormalizzate.sort((a, b) => a.dataOra - b.dataOra);
 
             const risultati = [];
@@ -141,13 +141,12 @@ document.getElementById('btnElabora').addEventListener('click', async () => {
             for (let i = 0; i < righeNormalizzate.length; i++) {
                 const r = righeNormalizzate[i];
 
-                // 'E' = ENTRATA
                 if (r.verso === 'E' || r.verso.includes('ENTR')) {
                     const dtIn = r.dataOra;
                     let dtOut = null;
                     let erroreTimbratura = false;
 
-                    // Cerca l'uscita 'U' successiva dello stesso dipendente
+                    // Accoppiamento con l'Uscita 'U' successiva del dipendente
                     for (let j = i + 1; j < righeNormalizzate.length; j++) {
                         const prox = righeNormalizzate[j];
                         if (prox.dipendente.toLowerCase() !== r.dipendente.toLowerCase()) break;
@@ -183,7 +182,6 @@ document.getElementById('btnElabora').addEventListener('click', async () => {
                         oreEffettuate = Math.round((diffMs / (1000 * 60 * 60)) * 100) / 100;
                     }
 
-                    // Formattazione data YYYY-MM-DD e ora HH:MM
                     const pad = num => String(num).padStart(2, '0');
                     const formatData = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
                     const formatOra = d => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
@@ -227,7 +225,7 @@ document.getElementById('btnElabora').addEventListener('click', async () => {
     reader.readAsArrayBuffer(file);
 });
 
-// 6. DISEGNO TABELLA E MEDIE
+// 6. GENERAZIONE TABELLA E MEDIE TOTALI
 function renderTabella(dati) {
     const tbody = document.getElementById('tableBody');
     tbody.innerHTML = '';
