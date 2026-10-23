@@ -28,7 +28,7 @@ function calcolaOreTarget(km, pernottamento) {
     return 8.0;
 }
 
-// 4. CONSULTAZIONE STORICO MESE / ANNO DA SUPABASE
+// 4. CONSULTAZIONE STORICO
 document.getElementById('btnCaricaStorico').addEventListener('click', async () => {
     const mese = parseInt(document.getElementById('selectMese').value);
     const anno = parseInt(document.getElementById('selectAnno').value);
@@ -51,12 +51,12 @@ document.getElementById('btnCaricaStorico').addEventListener('click', async () =
         .from('timbrature_elaborate')
         .select('*')
         .eq('report_id', report.id)
-        .order('id', { ascending: true }); // Mantiene l'ordine originale di inserimento
+        .order('id', { ascending: true });
 
     renderTabella(timbrature || []);
 });
 
-// 5. CARICAMENTO E LETTURA EXCEL NELL'ORDINE ESATTO DEL FILE
+// 5. CARICAMENTO E LETTURA RIGOROSAMENTE SEQUENZIALE
 document.getElementById('btnElabora').addEventListener('click', async () => {
     const fileInput = document.getElementById('fileInput');
     const file = fileInput.files[0];
@@ -84,7 +84,6 @@ document.getElementById('btnElabora').addEventListener('click', async () => {
                 return;
             }
 
-            // Anagrafica Sedi Dipendenti
             const { data: dipendentiAnagrafica } = await _supabase.from('dipendenti').select('*');
             const mappaSedi = {};
             if (dipendentiAnagrafica) {
@@ -113,7 +112,7 @@ document.getElementById('btnElabora').addEventListener('click', async () => {
                 report = newReport;
             }
 
-            // Mantiene L'ORDINE ORIGINALE delle righe senza fare alcun .sort()
+            // Normalizza le righe esattamente nell'ordine dell'Excel
             const righe = righeGrezze.map(r => {
                 const cognome = (r['Cognome'] || '').toString().trim();
                 const nome = (r['Nome'] || '').toString().trim();
@@ -139,37 +138,27 @@ document.getElementById('btnElabora').addEventListener('click', async () => {
             let i = 0;
             let cantiereGiornoPrecedente = {};
 
-            // Scorre il file RIGA PER RIGA nell'ordine in cui si trova
+            // Scansione sequenziale 1:1 riga per riga
             while (i < righe.length) {
                 const r = righe[i];
 
                 if (r.verso === 'E' || r.verso.includes('ENTR')) {
                     const dtIn = r.dataOra;
-                    let dtOut = null;
-                    let erroreTimbratura = false;
-                    let indexUscita = -1;
-
-                    // Cerca la prima uscita 'U' successiva dello stesso dipendente
-                    for (let j = i + 1; j < righe.length; j++) {
-                        const prox = righe[j];
-                        if (prox.dipendente.toLowerCase() !== r.dipendente.toLowerCase()) break;
-
-                        if (prox.verso === 'E' || prox.verso.includes('ENTR')) {
-                            erroreTimbratura = true; // Nuova entrata trovata prima di un'uscita
-                            break;
-                        }
-                        if (prox.verso === 'U' || prox.verso.includes('USC')) {
-                            dtOut = prox.dataOra;
-                            indexUscita = j;
-                            break;
-                        }
-                    }
-
-                    if (!dtOut) erroreTimbratura = true;
-
                     const dipKey = r.dipendente.toLowerCase();
                     const cantiereAttuale = r.cantiere;
                     const sedePura = mappaSedi[dipKey] || 'Milano (MI)';
+
+                    // Controlla se la riga immediatamente successiva è un'Uscita dello stesso dipendente
+                    let dtOut = null;
+                    let coppiaperta = false;
+
+                    if (i + 1 < righe.length) {
+                        const prox = righe[i + 1];
+                        if (prox.dipendente.toLowerCase() === dipKey && (prox.verso === 'U' || prox.verso.includes('USC'))) {
+                            dtOut = prox.dataOra;
+                            coppiaperta = true;
+                        }
+                    }
 
                     let isPernottamento = false;
                     if (cantiereGiornoPrecedente[dipKey] && cantiereGiornoPrecedente[dipKey] === cantiereAttuale) {
@@ -180,29 +169,45 @@ document.getElementById('btnElabora').addEventListener('click', async () => {
                     const km = isPernottamento ? 0 : r.km;
                     const oreTarget = calcolaOreTarget(km, isPernottamento);
 
-                    let oreEffettuate = 0;
-                    if (dtOut && !erroreTimbratura) {
+                    if (coppiaperta && dtOut) {
                         const diffMs = dtOut - dtIn;
-                        oreEffettuate = Math.round((diffMs / (1000 * 60 * 60)) * 100) / 100;
-                        i = indexUscita; // Salta alla riga dell'uscita trovata
-                    }
+                        const oreEffettuate = Math.round((diffMs / (1000 * 60 * 60)) * 100) / 100;
 
-                    risultati.push({
-                        report_id: report.id,
-                        dipendente: r.dipendente,
-                        giorno_entrata: formatData(dtIn),
-                        ora_entrata: formatOra(dtIn),
-                        giorno_uscita: dtOut ? formatData(dtOut) : null,
-                        ora_uscita: dtOut ? formatOra(dtOut) : null,
-                        luogo_partenza: isPernottamento ? 'Pernottamento Cantiere' : sedePura,
-                        luogo_cantiere: cantiereAttuale,
-                        km_percorsi: km,
-                        ore_target: oreTarget,
-                        ore_effettuate: erroreTimbratura ? 0 : oreEffettuate,
-                        errore_timbratura: erroreTimbratura
-                    });
+                        risultati.push({
+                            report_id: report.id,
+                            dipendente: r.dipendente,
+                            giorno_entrata: formatData(dtIn),
+                            ora_entrata: formatOra(dtIn),
+                            giorno_uscita: formatData(dtOut),
+                            ora_uscita: formatOra(dtOut),
+                            luogo_partenza: isPernottamento ? 'Pernottamento Cantiere' : sedePura,
+                            luogo_cantiere: cantiereAttuale,
+                            km_percorsi: km,
+                            ore_target: oreTarget,
+                            ore_effettuate: oreEffettuate,
+                            errore_timbratura: false
+                        });
+                        i += 2; // Avanza di 2 riga perché ha accoppiato E e U
+                    } else {
+                        // Entrata spaiata
+                        risultati.push({
+                            report_id: report.id,
+                            dipendente: r.dipendente,
+                            giorno_entrata: formatData(dtIn),
+                            ora_entrata: formatOra(dtIn),
+                            giorno_uscita: null,
+                            ora_uscita: null,
+                            luogo_partenza: isPernottamento ? 'Pernottamento Cantiere' : sedePura,
+                            luogo_cantiere: cantiereAttuale,
+                            km_percorsi: km,
+                            ore_target: oreTarget,
+                            ore_effettuate: 0,
+                            errore_timbratura: true
+                        });
+                        i += 1;
+                    }
                 } else {
-                    // Uscita 'U' trovata senza una precedente Entrata 'E'
+                    // Uscita spaiata
                     const dipKey = r.dipendente.toLowerCase();
                     const sedePura = mappaSedi[dipKey] || 'Milano (MI)';
                     risultati.push({
@@ -219,11 +224,10 @@ document.getElementById('btnElabora').addEventListener('click', async () => {
                         ore_effettuate: 0,
                         errore_timbratura: true
                     });
+                    i += 1;
                 }
-                i++;
             }
 
-            // Salva nel Database Supabase mantenendo esattamente l'ordine di lettura
             if (risultati.length > 0) {
                 await _supabase.from('timbrature_elaborate').delete().eq('report_id', report.id);
                 const { error: errDB } = await _supabase.from('timbrature_elaborate').insert(risultati);
