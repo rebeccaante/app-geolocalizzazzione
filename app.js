@@ -3,6 +3,26 @@ const SUPABASE_URL = 'https://fasjhqmnzxhtnpiuvzdk.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_EqZTCd8mOinAbEXk2kYoIw_PTAOvGOv';
 const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
+// Coordinate geografiche delle Sedi di Partenza QTECH S.r.l.
+const COORDINATE_SEDI = {
+    'milano': { lat: 45.5085, lon: 9.2231, nome: 'Milano (Via Gentile 7)' },
+    'san giovanni lupatoto': { lat: 45.3855, lon: 11.0362, nome: 'San Giovanni Lupatoto (VR)' },
+    'verona': { lat: 45.3855, lon: 11.0362, nome: 'San Giovanni Lupatoto (VR)' }
+};
+
+// Formula matematica per calcolare i km reali tra due coordinate GPS
+function calcolaDistanzaKm(lat1, lon1, lat2, lon2) {
+    if (!lat1 || !lon1 || !lat2 || !lon2) return 0;
+    const R = 6371; // Raggio terrestre in km
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+              Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return Math.round(R * c * 10) / 10; // Arrotonda al decimo di km
+}
+
 // 2. POPOLAMENTO ANNI (2026 - 2060)
 document.addEventListener('DOMContentLoaded', () => {
     const selectAnno = document.getElementById('selectAnno');
@@ -20,7 +40,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 });
 
-// 3. REGOLAMENTO QTECH S.R.L.
+// 3. REGOLAMENTO QTECH S.R.L. (Calcolo Target Ore)
 function calcolaOreTarget(km, pernottamento) {
     if (pernottamento || km <= 40) return 8.0;
     if (km <= 100) return 7.5;
@@ -56,7 +76,7 @@ document.getElementById('btnCaricaStorico').addEventListener('click', async () =
     renderTabella(timbrature || []);
 });
 
-// 5. CARICAMENTO E LETTURA RIGOROSAMENTE SEQUENZIALE
+// 5. CARICAMENTO, LETTURA E CALCOLO DISTANZE DA COORDINATE
 document.getElementById('btnElabora').addEventListener('click', async () => {
     const fileInput = document.getElementById('fileInput');
     const file = fileInput.files[0];
@@ -84,6 +104,7 @@ document.getElementById('btnElabora').addEventListener('click', async () => {
                 return;
             }
 
+            // Anagrafica Sedi Dipendenti da Supabase
             const { data: dipendentiAnagrafica } = await _supabase.from('dipendenti').select('*');
             const mappaSedi = {};
             if (dipendentiAnagrafica) {
@@ -112,7 +133,7 @@ document.getElementById('btnElabora').addEventListener('click', async () => {
                 report = newReport;
             }
 
-            // Normalizza le righe esattamente nell'ordine dell'Excel
+            // Normalizzazione con calcolo coordinate
             const righe = righeGrezze.map(r => {
                 const cognome = (r['Cognome'] || '').toString().trim();
                 const nome = (r['Nome'] || '').toString().trim();
@@ -124,10 +145,11 @@ document.getElementById('btnElabora').addEventListener('click', async () => {
                 }
 
                 const verso = (r['Verso'] || '').toString().toUpperCase().trim();
-                const cantiere = (r['Posizione'] || r['Cantiere'] || 'Cantiere').toString().trim();
-                const km = parseFloat(r['Km'] || 0);
+                const lat = parseFloat(r['Latitudine'] || 0);
+                const lon = parseFloat(r['Longitudine'] || 0);
+                const posizione = (r['Posizione'] || '').toString().trim();
 
-                return { dipendente, verso, dataOra, cantiere, km };
+                return { dipendente, verso, dataOra, lat, lon, posizione };
             }).filter(r => r.dipendente && r.dataOra && !isNaN(r.dataOra.getTime()));
 
             const risultati = [];
@@ -138,17 +160,23 @@ document.getElementById('btnElabora').addEventListener('click', async () => {
             let i = 0;
             let cantiereGiornoPrecedente = {};
 
-            // Scansione sequenziale 1:1 riga per riga
             while (i < righe.length) {
                 const r = righe[i];
 
                 if (r.verso === 'E' || r.verso.includes('ENTR')) {
                     const dtIn = r.dataOra;
                     const dipKey = r.dipendente.toLowerCase();
-                    const cantiereAttuale = r.cantiere;
-                    const sedePura = mappaSedi[dipKey] || 'Milano (MI)';
+                    const nomeSede = mappaSedi[dipKey] || 'Milano (Via Gentile 7)';
+                    
+                    // Recupera coordinate della sede di partenza
+                    let coordSede = COORDINATE_SEDI['milano'];
+                    if (nomeSede.toLowerCase().includes('lupatoto') || nomeSede.toLowerCase().includes('verona')) {
+                        coordSede = COORDINATE_SEDI['san giovanni lupatoto'];
+                    }
 
-                    // Controlla se la riga immediatamente successiva è un'Uscita dello stesso dipendente
+                    // Calcola la distanza GPS tra la Sede e la posizione della timbratura
+                    const kmReali = calcolaDistanzaKm(coordSede.lat, coordSede.lon, r.lat, r.lon);
+
                     let dtOut = null;
                     let coppiaperta = false;
 
@@ -160,14 +188,16 @@ document.getElementById('btnElabora').addEventListener('click', async () => {
                         }
                     }
 
+                    // Verifica eccezione pernottamento
+                    const cantiereAttuale = `${r.lat.toFixed(3)},${r.lon.toFixed(3)}`;
                     let isPernottamento = false;
                     if (cantiereGiornoPrecedente[dipKey] && cantiereGiornoPrecedente[dipKey] === cantiereAttuale) {
                         isPernottamento = true;
                     }
                     cantiereGiornoPrecedente[dipKey] = cantiereAttuale;
 
-                    const km = isPernottamento ? 0 : r.km;
-                    const oreTarget = calcolaOreTarget(km, isPernottamento);
+                    const kmFinali = isPernottamento ? 0 : kmReali;
+                    const oreTarget = calcolaOreTarget(kmFinali, isPernottamento);
 
                     if (coppiaperta && dtOut) {
                         const diffMs = dtOut - dtIn;
@@ -180,16 +210,15 @@ document.getElementById('btnElabora').addEventListener('click', async () => {
                             ora_entrata: formatOra(dtIn),
                             giorno_uscita: formatData(dtOut),
                             ora_uscita: formatOra(dtOut),
-                            luogo_partenza: isPernottamento ? 'Pernottamento Cantiere' : sedePura,
-                            luogo_cantiere: cantiereAttuale,
-                            km_percorsi: km,
+                            luogo_partenza: isPernottamento ? 'Pernottamento Cantiere' : coordSede.nome,
+                            luogo_cantiere: r.posizione || `${r.lat}, ${r.lon}`,
+                            km_percorsi: kmFinali,
                             ore_target: oreTarget,
                             ore_effettuate: oreEffettuate,
                             errore_timbratura: false
                         });
-                        i += 2; // Avanza di 2 riga perché ha accoppiato E e U
+                        i += 2;
                     } else {
-                        // Entrata spaiata
                         risultati.push({
                             report_id: report.id,
                             dipendente: r.dipendente,
@@ -197,9 +226,9 @@ document.getElementById('btnElabora').addEventListener('click', async () => {
                             ora_entrata: formatOra(dtIn),
                             giorno_uscita: null,
                             ora_uscita: null,
-                            luogo_partenza: isPernottamento ? 'Pernottamento Cantiere' : sedePura,
-                            luogo_cantiere: cantiereAttuale,
-                            km_percorsi: km,
+                            luogo_partenza: isPernottamento ? 'Pernottamento Cantiere' : coordSede.nome,
+                            luogo_cantiere: r.posizione || `${r.lat}, ${r.lon}`,
+                            km_percorsi: kmFinali,
                             ore_target: oreTarget,
                             ore_effettuate: 0,
                             errore_timbratura: true
@@ -207,9 +236,8 @@ document.getElementById('btnElabora').addEventListener('click', async () => {
                         i += 1;
                     }
                 } else {
-                    // Uscita spaiata
                     const dipKey = r.dipendente.toLowerCase();
-                    const sedePura = mappaSedi[dipKey] || 'Milano (MI)';
+                    const nomeSede = mappaSedi[dipKey] || 'Milano (Via Gentile 7)';
                     risultati.push({
                         report_id: report.id,
                         dipendente: r.dipendente,
@@ -217,8 +245,8 @@ document.getElementById('btnElabora').addEventListener('click', async () => {
                         ora_entrata: null,
                         giorno_uscita: formatData(r.dataOra),
                         ora_uscita: formatOra(r.dataOra),
-                        luogo_partenza: sedePura,
-                        luogo_cantiere: r.cantiere,
+                        luogo_partenza: nomeSede,
+                        luogo_cantiere: r.posizione || `${r.lat}, ${r.lon}`,
                         km_percorsi: 0,
                         ore_target: 8.0,
                         ore_effettuate: 0,
@@ -249,7 +277,7 @@ document.getElementById('btnElabora').addEventListener('click', async () => {
     reader.readAsArrayBuffer(file);
 });
 
-// 6. RENDER TABELLA E MEDIE
+// 6. RENDER TABELLA CON LINK GOOGLE MAPS CLICCABILI
 function renderTabella(dati) {
     const tbody = document.getElementById('tableBody');
     tbody.innerHTML = '';
@@ -263,15 +291,21 @@ function renderTabella(dati) {
         const tr = document.createElement('tr');
         if (riga.errore_timbratura) tr.classList.add('bg-red-50');
 
+        // Formatta la colonna Cantiere come link Google Maps se contiene l'URL
+        let cantiereHtml = riga.luogo_cantiere;
+        if (riga.luogo_cantiere && riga.luogo_cantiere.startsWith('http')) {
+            cantiereHtml = `<a href="${riga.luogo_cantiere}" target="_blank" class="text-blue-600 underline font-medium">Apri Mappa 📍</a>`;
+        }
+
         tr.innerHTML = `
             <td class="p-3 font-medium">${riga.dipendente}</td>
             <td class="p-3">${riga.giorno_entrata || '-'}</td>
             <td class="p-3">${riga.ora_entrata || '-'}</td>
             <td class="p-3">${riga.giorno_uscita || '-'}</td>
             <td class="p-3">${riga.ora_uscita || '-'}</td>
-            <td class="p-3">${riga.luogo_partenza}</td>
-            <td class="p-3 text-xs max-w-xs truncate">${riga.luogo_cantiere}</td>
-            <td class="p-3 text-center">${riga.km_percorsi} km</td>
+            <td class="p-3 text-xs">${riga.luogo_partenza}</td>
+            <td class="p-3 text-xs max-w-xs truncate">${cantiereHtml}</td>
+            <td class="p-3 text-center font-medium text-blue-700">${riga.km_percorsi} km</td>
             <td class="p-3 text-center font-semibold">${riga.ore_target} h</td>
             <td class="p-3 text-center font-semibold">${riga.errore_timbratura ? '-' : riga.ore_effettuate + ' h'}</td>
             <td class="p-3 text-xs ${riga.errore_timbratura ? 'text-red-600 font-bold' : ''}">
