@@ -22,13 +22,27 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // 3. REGOLAMENTO QTECH S.R.L.
 function calcolaOreTarget(km, pernottamento) {
-    if (pernottamento || km <= 40) return 8.0;   // 0-40 km -> 8h
-    if (km <= 100) return 7.5;                   // 41-100 km -> 7.5h
-    if (km <= 150) return 6.5;                   // 101-150 km -> 6.5h
-    return 8.0;                                  // Oltre 150 km -> 8h dal 2° gg
+    if (pernottamento || km <= 40) return 8.0;
+    if (km <= 100) return 7.5;
+    if (km <= 150) return 6.5;
+    return 8.0;
 }
 
-// 4. CONSULTAZIONE STORICO MESE / ANNO DA SUPABASE
+// Helper per trovare valori nell'Excel indipendentemente dal nome esatto della colonna
+function getValoreCoppia(riga, paroleChiave) {
+    const chiavi = Object.keys(riga);
+    for (let key of chiavi) {
+        const keyClean = key.toLowerCase().trim();
+        for (let p of paroleChiave) {
+            if (keyClean.includes(p)) {
+                return riga[key];
+            }
+        }
+    }
+    return '';
+}
+
+// 4. CONSULTAZIONE STORICO
 document.getElementById('btnCaricaStorico').addEventListener('click', async () => {
     const mese = parseInt(document.getElementById('selectMese').value);
     const anno = parseInt(document.getElementById('selectAnno').value);
@@ -56,7 +70,7 @@ document.getElementById('btnCaricaStorico').addEventListener('click', async () =
     renderTabella(timbrature || []);
 });
 
-// 5. CARICAMENTO, LETTURA EXCEL ED ELABORAZIONE
+// 5. CARICAMENTO, LETTURA ED ELABORAZIONE FLUIDA
 document.getElementById('btnElabora').addEventListener('click', async () => {
     const fileInput = document.getElementById('fileInput');
     const file = fileInput.files[0];
@@ -80,11 +94,11 @@ document.getElementById('btnElabora').addEventListener('click', async () => {
             const righeGrezze = XLSX.utils.sheet_to_json(firstSheet);
 
             if (!righeGrezze || righeGrezze.length === 0) {
-                alert('Il file caricato è vuoto o non è stato letto correttamente.');
+                alert('Il file caricato è vuoto.');
                 return;
             }
 
-            // Anagrafica Sedi Dipendenti
+            // Anagrafica Sedi Dipendenti da Supabase
             const { data: dipendentiAnagrafica } = await _supabase.from('dipendenti').select('*');
             const mappaSedi = {};
             if (dipendentiAnagrafica) {
@@ -96,7 +110,6 @@ document.getElementById('btnElabora').addEventListener('click', async () => {
             const mese = parseInt(document.getElementById('selectMese').value);
             const anno = parseInt(document.getElementById('selectAnno').value);
 
-            // Inserisci o Recupera Report Mensile
             let { data: report } = await _supabase
                 .from('report_mensili')
                 .select('id')
@@ -114,41 +127,51 @@ document.getElementById('btnElabora').addEventListener('click', async () => {
                 report = newReport;
             }
 
-            // Elaborazione Turni e Anomalie
             const risultati = [];
             let cantiereGiornoPrecedente = {};
 
-            for (let i = 0; i < righeGrezze.length; i++) {
-                const r = righeGrezze[i];
-                const nomeDip = (r.Dipendente || r.Nome || r.dipendente || '').toString().trim();
-                const verso = (r.Verso || r.verso || '').toString().toUpperCase().trim();
+            // Mappatura dinamica delle righe dell'Excel
+            const righeNormalizzate = righeGrezze.map(r => ({
+                dipendente: String(getValoreCoppia(r, ['dipendente', 'nome', 'cognome', 'user', 'persona'])).trim(),
+                verso: String(getValoreCoppia(r, ['verso', 'tipo', 'causale', 'in/out', 'operazione'])).toUpperCase().trim(),
+                dataOra: getValoreCoppia(r, ['data', 'ora', 'timestamp', 'time', 'giorno']),
+                cantiere: String(getValoreCoppia(r, ['cantiere', 'luogo', 'location', 'indirizzo', 'posto', 'città', 'citta'])).trim(),
+                km: parseFloat(getValoreCoppia(r, ['km', 'chilometri', 'distanza']) || 0)
+            })).filter(r => r.dipendente && r.dataOra);
 
-                if (verso === 'ENTRATA') {
-                    const dtIn = new Date(r.DataOra || r.Data || r.ora);
+            // Ordina cronologicamente per dipendente e orario
+            righeNormalizzate.sort((a, b) => new Date(a.dataOra) - new Date(b.dataOra));
+
+            for (let i = 0; i < righeNormalizzate.length; i++) {
+                const r = righeNormalizzate[i];
+                const verso = r.verso;
+
+                // Accetta sia 'ENTRATA', 'E', 'IN', 'INGRESSO'
+                if (verso.includes('ENTR') || verso === 'E' || verso === 'IN' || verso.includes('INGR')) {
+                    const dtIn = new Date(r.dataOra);
                     let dtOut = null;
                     let erroreTimbratura = false;
 
-                    // Cerca l'uscita corrispondente
-                    for (let j = i + 1; j < righeGrezze.length; j++) {
-                        const prox = righeGrezze[j];
-                        const proxNome = (prox.Dipendente || prox.Nome || prox.dipendente || '').toString().trim();
-                        if (proxNome !== nomeDip) break;
+                    // Cerca la corrispondente uscita
+                    for (let j = i + 1; j < righeNormalizzate.length; j++) {
+                        const prox = righeNormalizzate[j];
+                        if (prox.dipendente.toLowerCase() !== r.dipendente.toLowerCase()) break;
 
-                        const proxVerso = (prox.Verso || prox.verso || '').toString().toUpperCase().trim();
-                        if (proxVerso === 'ENTRATA') {
-                            erroreTimbratura = true;
+                        const proxVerso = prox.verso;
+                        if (proxVerso.includes('ENTR') || proxVerso === 'E' || proxVerso === 'IN' || proxVerso.includes('INGR')) {
+                            erroreTimbratura = true; // Doppia entrata
                             break;
                         }
-                        if (proxVerso === 'USCITA') {
-                            dtOut = new Date(prox.DataOra || prox.Data || prox.ora);
+                        if (proxVerso.includes('USC') || proxVerso === 'U' || proxVerso === 'OUT' || proxVerso.includes('USCITA')) {
+                            dtOut = new Date(prox.dataOra);
                             break;
                         }
                     }
 
                     if (!dtOut) erroreTimbratura = true;
 
-                    const cantiereAttuale = (r.Cantiere || r.Luogo || r.Citta || 'Cantiere').toString().trim();
-                    const dipKey = nomeDip.toLowerCase();
+                    const dipKey = r.dipendente.toLowerCase();
+                    const cantiereAttuale = r.cantiere || 'Cantiere';
                     const sedePura = mappaSedi[dipKey] || 'Milano (MI)';
 
                     let isPernottamento = false;
@@ -157,7 +180,7 @@ document.getElementById('btnElabora').addEventListener('click', async () => {
                     }
                     cantiereGiornoPrecedente[dipKey] = cantiereAttuale;
 
-                    const km = isPernottamento ? 0 : parseFloat(r.Km || r.km || 0);
+                    const km = isPernottamento ? 0 : r.km;
                     const oreTarget = calcolaOreTarget(km, isPernottamento);
 
                     let oreEffettuate = 0;
@@ -168,11 +191,11 @@ document.getElementById('btnElabora').addEventListener('click', async () => {
 
                     risultati.push({
                         report_id: report.id,
-                        dipendente: nomeDip,
-                        giorno_entrata: dtIn.toISOString().split('T')[0],
-                        ora_entrata: dtIn.toTimeString().split(' ')[0].substring(0, 5),
-                        giorno_uscita: dtOut ? dtOut.toISOString().split('T')[0] : null,
-                        ora_uscita: dtOut ? dtOut.toTimeString().split(' ')[0].substring(0, 5) : null,
+                        dipendente: r.dipendente,
+                        giorno_entrata: isNaN(dtIn) ? '-' : dtIn.toISOString().split('T')[0],
+                        ora_entrata: isNaN(dtIn) ? '-' : dtIn.toTimeString().split(' ')[0].substring(0, 5),
+                        giorno_uscita: (dtOut && !isNaN(dtOut)) ? dtOut.toISOString().split('T')[0] : null,
+                        ora_uscita: (dtOut && !isNaN(dtOut)) ? dtOut.toTimeString().split(' ')[0].substring(0, 5) : null,
                         luogo_partenza: isPernottamento ? 'Pernottamento Cantiere' : sedePura,
                         luogo_cantiere: cantiereAttuale,
                         km_percorsi: km,
@@ -186,15 +209,15 @@ document.getElementById('btnElabora').addEventListener('click', async () => {
             if (risultati.length > 0) {
                 await _supabase.from('timbrature_elaborate').delete().eq('report_id', report.id);
                 const { error: errDB } = await _supabase.from('timbrature_elaborate').insert(risultati);
-                if (errDB) throw errDB;
+                if (errDB) console.error('Errore Supabase:', errDB);
             }
 
             renderTabella(risultati);
-            alert('Elaborazione completata con successo!');
+            alert('Elaborazione completata!');
 
         } catch (err) {
-            console.error('Errore:', err);
-            alert('Si è verificato un errore durante l\'elaborazione: ' + (err.message || err));
+            console.error(err);
+            alert('Errore durante l\'elaborazione: ' + (err.message || err));
         } finally {
             btn.disabled = false;
             btn.innerText = 'Elabora e Salva';
@@ -204,7 +227,7 @@ document.getElementById('btnElabora').addEventListener('click', async () => {
     reader.readAsArrayBuffer(file);
 });
 
-// 6. DISEGNO TABELLA E CALCOLO MEDIE
+// 6. DISEGNO TABELLA E MEDIE
 function renderTabella(dati) {
     const tbody = document.getElementById('tableBody');
     tbody.innerHTML = '';
