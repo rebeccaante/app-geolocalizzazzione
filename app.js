@@ -56,7 +56,7 @@ document.getElementById('btnCaricaStorico').addEventListener('click', async () =
     renderTabella(timbrature || []);
 });
 
-// 5. CARICAMENTO, LETTURA EXCEL ED ELABORAZIONE TIMBRATURE
+// 5. CARICAMENTO, LETTURA EXCEL ED ELABORAZIONE AVANZATA
 document.getElementById('btnElabora').addEventListener('click', async () => {
     const fileInput = document.getElementById('fileInput');
     const file = fileInput.files[0];
@@ -75,7 +75,6 @@ document.getElementById('btnElabora').addEventListener('click', async () => {
     reader.onload = async (e) => {
         try {
             const data = new Uint8Array(e.target.result);
-            // cellDates: true garantisce che la data rimanga reale e non convertita in 1970
             const workbook = XLSX.read(data, { type: 'array', cellDates: true });
             const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
             const righeGrezze = XLSX.utils.sheet_to_json(firstSheet);
@@ -114,7 +113,7 @@ document.getElementById('btnElabora').addEventListener('click', async () => {
                 report = newReport;
             }
 
-            // Mappatura esatta sui nomi delle colonne del vostro Excel
+            // Normalizzazione dati Excel
             const righeNormalizzate = righeGrezze.map(r => {
                 const cognome = (r['Cognome'] || '').toString().trim();
                 const nome = (r['Nome'] || '').toString().trim();
@@ -132,76 +131,116 @@ document.getElementById('btnElabora').addEventListener('click', async () => {
                 return { dipendente, verso, dataOra, cantiere, km };
             }).filter(r => r.dipendente && r.dataOra && !isNaN(r.dataOra.getTime()));
 
-            // Ordina cronologicamente
-            righeNormalizzate.sort((a, b) => a.dataOra - b.dataOra);
+            // Raggruppa per dipendente
+            const gruppiDipendenti = {};
+            righeNormalizzate.forEach(r => {
+                const dip = r.dipendente;
+                if (!gruppiDipendenti[dip]) gruppiDipendenti[dip] = [];
+                gruppiDipendenti[dip].push(r);
+            });
 
             const risultati = [];
-            let cantiereGiornoPrecedente = {};
+            const pad = num => String(num).padStart(2, '0');
+            const formatData = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+            const formatOra = d => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 
-            for (let i = 0; i < righeNormalizzate.length; i++) {
-                const r = righeNormalizzate[i];
+            // Processa dipendente per dipendente
+            for (const dip in gruppiDipendenti) {
+                const timbratureDip = gruppiDipendenti[dip];
+                // Ordina cronologicamente
+                timbratureDip.sort((a, b) => a.dataOra - b.dataOra);
 
-                if (r.verso === 'E' || r.verso.includes('ENTR')) {
-                    const dtIn = r.dataOra;
-                    let dtOut = null;
-                    let erroreTimbratura = false;
+                let i = 0;
+                let cantiereGiornoPrecedente = '';
 
-                    // Accoppiamento con l'Uscita 'U' successiva del dipendente
-                    for (let j = i + 1; j < righeNormalizzate.length; j++) {
-                        const prox = righeNormalizzate[j];
-                        if (prox.dipendente.toLowerCase() !== r.dipendente.toLowerCase()) break;
+                while (i < timbratureDip.length) {
+                    const r = timbratureDip[i];
 
-                        if (prox.verso === 'E' || prox.verso.includes('ENTR')) {
-                            erroreTimbratura = true; // Doppia entrata
-                            break;
+                    if (r.verso === 'E' || r.verso.includes('ENTR')) {
+                        const dtIn = r.dataOra;
+                        let dtOut = null;
+                        let erroreTimbratura = false;
+                        let indexUscita = -1;
+
+                        // Cerca l'Uscita 'U' successiva
+                        for (let j = i + 1; j < timbratureDip.length; j++) {
+                            const prox = timbratureDip[j];
+                            if (prox.verso === 'E' || prox.verso.includes('ENTR')) {
+                                erroreTimbratura = true; // Doppia entrata
+                                break;
+                            }
+                            if (prox.verso === 'U' || prox.verso.includes('USC')) {
+                                dtOut = prox.dataOra;
+                                indexUscita = j;
+                                break;
+                            }
                         }
-                        if (prox.verso === 'U' || prox.verso.includes('USC')) {
-                            dtOut = prox.dataOra;
-                            break;
+
+                        if (!dtOut) erroreTimbratura = true;
+
+                        const dipKey = dip.toLowerCase();
+                        const cantiereAttuale = r.cantiere;
+                        const sedePura = mappaSedi[dipKey] || 'Milano (MI)';
+
+                        let isPernottamento = false;
+                        if (cantiereGiornoPrecedente && cantiereGiornoPrecedente === cantiereAttuale) {
+                            isPernottamento = true;
                         }
+                        cantiereGiornoPrecedente = cantiereAttuale;
+
+                        const km = isPernottamento ? 0 : r.km;
+                        const oreTarget = calcolaOreTarget(km, isPernottamento);
+
+                        let oreEffettuate = 0;
+                        if (dtOut && !erroreTimbratura) {
+                            const diffMs = dtOut - dtIn;
+                            oreEffettuate = Math.round((diffMs / (1000 * 60 * 60)) * 100) / 100;
+                            i = indexUscita; // Salta fino alla riga dell'Uscita trovata
+                        }
+
+                        risultati.push({
+                            report_id: report.id,
+                            dipendente: dip,
+                            giorno_entrata: formatData(dtIn),
+                            ora_entrata: formatOra(dtIn),
+                            giorno_uscita: dtOut ? formatData(dtOut) : null,
+                            ora_uscita: dtOut ? formatOra(dtOut) : null,
+                            luogo_partenza: isPernottamento ? 'Pernottamento Cantiere' : sedePura,
+                            luogo_cantiere: cantiereAttuale,
+                            km_percorsi: km,
+                            ore_target: oreTarget,
+                            ore_effettuate: erroreTimbratura ? 0 : oreEffettuate,
+                            errore_timbratura: erroreTimbratura
+                        });
+                    } else {
+                        // Uscita 'U' senza Entrata precedente (Anomalia)
+                        const dipKey = dip.toLowerCase();
+                        const sedePura = mappaSedi[dipKey] || 'Milano (MI)';
+                        risultati.push({
+                            report_id: report.id,
+                            dipendente: dip,
+                            giorno_entrata: null,
+                            ora_entrata: null,
+                            giorno_uscita: formatData(r.dataOra),
+                            ora_uscita: formatOra(r.dataOra),
+                            luogo_partenza: sedePura,
+                            luogo_cantiere: r.cantiere,
+                            km_percorsi: 0,
+                            ore_target: 8.0,
+                            ore_effettuate: 0,
+                            errore_timbratura: true
+                        });
                     }
-
-                    if (!dtOut) erroreTimbratura = true;
-
-                    const dipKey = r.dipendente.toLowerCase();
-                    const cantiereAttuale = r.cantiere;
-                    const sedePura = mappaSedi[dipKey] || 'Milano (MI)';
-
-                    let isPernottamento = false;
-                    if (cantiereGiornoPrecedente[dipKey] && cantiereGiornoPrecedente[dipKey] === cantiereAttuale) {
-                        isPernottamento = true;
-                    }
-                    cantiereGiornoPrecedente[dipKey] = cantiereAttuale;
-
-                    const km = isPernottamento ? 0 : r.km;
-                    const oreTarget = calcolaOreTarget(km, isPernottamento);
-
-                    let oreEffettuate = 0;
-                    if (dtOut && !erroreTimbratura) {
-                        const diffMs = dtOut - dtIn;
-                        oreEffettuate = Math.round((diffMs / (1000 * 60 * 60)) * 100) / 100;
-                    }
-
-                    const pad = num => String(num).padStart(2, '0');
-                    const formatData = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-                    const formatOra = d => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
-
-                    risultati.push({
-                        report_id: report.id,
-                        dipendente: r.dipendente,
-                        giorno_entrata: formatData(dtIn),
-                        ora_entrata: formatOra(dtIn),
-                        giorno_uscita: dtOut ? formatData(dtOut) : null,
-                        ora_uscita: dtOut ? formatOra(dtOut) : null,
-                        luogo_partenza: isPernottamento ? 'Pernottamento Cantiere' : sedePura,
-                        luogo_cantiere: cantiereAttuale,
-                        km_percorsi: km,
-                        ore_target: oreTarget,
-                        ore_effettuate: erroreTimbratura ? 0 : oreEffettuate,
-                        errore_timbratura: erroreTimbratura
-                    });
+                    i++;
                 }
             }
+
+            // Ordina i risultati per giorno di entrata/uscita prima di mostrare
+            risultati.sort((a, b) => {
+                const dA = a.giorno_entrata || a.giorno_uscita;
+                const dB = b.giorno_entrata || b.giorno_uscita;
+                return dA.localeCompare(dB);
+            });
 
             // Salva nel Database Supabase
             if (risultati.length > 0) {
@@ -211,7 +250,7 @@ document.getElementById('btnElabora').addEventListener('click', async () => {
             }
 
             renderTabella(risultati);
-            alert('Elaborazione completata!');
+            alert('Elaborazione completata con successo!');
 
         } catch (err) {
             console.error(err);
@@ -225,7 +264,7 @@ document.getElementById('btnElabora').addEventListener('click', async () => {
     reader.readAsArrayBuffer(file);
 });
 
-// 6. GENERAZIONE TABELLA E MEDIE TOTALI
+// 6. RENDER TABELLA E CALCOLO DELLE MEDIE TOTALI
 function renderTabella(dati) {
     const tbody = document.getElementById('tableBody');
     tbody.innerHTML = '';
@@ -241,8 +280,8 @@ function renderTabella(dati) {
 
         tr.innerHTML = `
             <td class="p-3 font-medium">${riga.dipendente}</td>
-            <td class="p-3">${riga.giorno_entrata}</td>
-            <td class="p-3">${riga.ora_entrata}</td>
+            <td class="p-3">${riga.giorno_entrata || '-'}</td>
+            <td class="p-3">${riga.ora_entrata || '-'}</td>
             <td class="p-3">${riga.giorno_uscita || '-'}</td>
             <td class="p-3">${riga.ora_uscita || '-'}</td>
             <td class="p-3">${riga.luogo_partenza}</td>
@@ -272,7 +311,7 @@ function renderTabella(dati) {
     const tfoot = document.getElementById('tableFooter');
     tfoot.innerHTML = `
         <tr>
-            <td colspan="8" class="p-3 text-right uppercase tracking-wider">Media Totale Tutti i Dipendenti:</td>
+            <td colspan="8" class="p-3 text-right uppercase tracking-wider font-semibold">Media Totale Tutti i Dipendenti:</td>
             <td class="p-3 text-center text-yellow-300 text-base font-bold">${mediaTarget} h</td>
             <td class="p-3 text-center text-green-300 text-base font-bold">${mediaEffettuate} h</td>
             <td></td>
