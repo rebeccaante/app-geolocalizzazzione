@@ -3,7 +3,7 @@ const SUPABASE_URL = 'https://fasjhqmnzxhtnpiuvzdk.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_EqZTCd8mOinAbEXk2kYoIw_PTAOvGOv';
 const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// 2. POPOLAMENTO ANNI (2026 - 2060)
+/ 2. POPOLAMENTO ANNI (2026 - 2060)
 document.addEventListener('DOMContentLoaded', () => {
     const selectAnno = document.getElementById('selectAnno');
     if (selectAnno) {
@@ -26,20 +26,6 @@ function calcolaOreTarget(km, pernottamento) {
     if (km <= 100) return 7.5;
     if (km <= 150) return 6.5;
     return 8.0;
-}
-
-// Helper per trovare valori nell'Excel indipendentemente dal nome esatto della colonna
-function getValoreCoppia(riga, paroleChiave) {
-    const chiavi = Object.keys(riga);
-    for (let key of chiavi) {
-        const keyClean = key.toLowerCase().trim();
-        for (let p of paroleChiave) {
-            if (keyClean.includes(p)) {
-                return riga[key];
-            }
-        }
-    }
-    return '';
 }
 
 // 4. CONSULTAZIONE STORICO
@@ -70,7 +56,7 @@ document.getElementById('btnCaricaStorico').addEventListener('click', async () =
     renderTabella(timbrature || []);
 });
 
-// 5. CARICAMENTO, LETTURA ED ELABORAZIONE FLUIDA
+// 5. CARICAMENTO ED ELABORAZIONE SPECIFICA PER IL VOSTRO EXCEL
 document.getElementById('btnElabora').addEventListener('click', async () => {
     const fileInput = document.getElementById('fileInput');
     const file = fileInput.files[0];
@@ -89,7 +75,8 @@ document.getElementById('btnElabora').addEventListener('click', async () => {
     reader.onload = async (e) => {
         try {
             const data = new Uint8Array(e.target.result);
-            const workbook = XLSX.read(data, { type: 'array' });
+            // IMPORTANTE: cellDates: true converte correttamente le date dell'Excel
+            const workbook = XLSX.read(data, { type: 'array', cellDates: true });
             const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
             const righeGrezze = XLSX.utils.sheet_to_json(firstSheet);
 
@@ -127,43 +114,50 @@ document.getElementById('btnElabora').addEventListener('click', async () => {
                 report = newReport;
             }
 
+            // Lettura e Normalizzazione specifica per la struttura del vostro file
+            const righeNormalizzate = righeGrezze.map(r => {
+                const cognome = (r['Cognome'] || '').toString().trim();
+                const nome = (r['Nome'] || '').toString().trim();
+                const dipendente = `${cognome} ${nome}`.trim();
+                
+                let dataOra = r['Data Ora'];
+                if (dataOra && !(dataOra instanceof Date)) {
+                    dataOra = new Date(dataOra);
+                }
+
+                const verso = (r['Verso'] || '').toString().toUpperCase().trim();
+                const cantiere = (r['Posizione'] || r['Cantiere'] || 'Cantiere').toString().trim();
+                const km = parseFloat(r['Km'] || 0);
+
+                return { dipendente, verso, dataOra, cantiere, km };
+            }).filter(r => r.dipendente && r.dataOra && !isNaN(r.dataOra.getTime()));
+
+            // Ordina per data e ora crescente
+            righeNormalizzate.sort((a, b) => a.dataOra - b.dataOra);
+
             const risultati = [];
             let cantiereGiornoPrecedente = {};
 
-            // Mappatura dinamica delle righe dell'Excel
-            const righeNormalizzate = righeGrezze.map(r => ({
-                dipendente: String(getValoreCoppia(r, ['dipendente', 'nome', 'cognome', 'user', 'persona'])).trim(),
-                verso: String(getValoreCoppia(r, ['verso', 'tipo', 'causale', 'in/out', 'operazione'])).toUpperCase().trim(),
-                dataOra: getValoreCoppia(r, ['data', 'ora', 'timestamp', 'time', 'giorno']),
-                cantiere: String(getValoreCoppia(r, ['cantiere', 'luogo', 'location', 'indirizzo', 'posto', 'città', 'citta'])).trim(),
-                km: parseFloat(getValoreCoppia(r, ['km', 'chilometri', 'distanza']) || 0)
-            })).filter(r => r.dipendente && r.dataOra);
-
-            // Ordina cronologicamente per dipendente e orario
-            righeNormalizzate.sort((a, b) => new Date(a.dataOra) - new Date(b.dataOra));
-
             for (let i = 0; i < righeNormalizzate.length; i++) {
                 const r = righeNormalizzate[i];
-                const verso = r.verso;
 
-                // Accetta sia 'ENTRATA', 'E', 'IN', 'INGRESSO'
-                if (verso.includes('ENTR') || verso === 'E' || verso === 'IN' || verso.includes('INGR')) {
-                    const dtIn = new Date(r.dataOra);
+                // 'E' = ENTRATA
+                if (r.verso === 'E' || r.verso.includes('ENTR')) {
+                    const dtIn = r.dataOra;
                     let dtOut = null;
                     let erroreTimbratura = false;
 
-                    // Cerca la corrispondente uscita
+                    // Cerca l'uscita 'U' successiva dello stesso dipendente
                     for (let j = i + 1; j < righeNormalizzate.length; j++) {
                         const prox = righeNormalizzate[j];
                         if (prox.dipendente.toLowerCase() !== r.dipendente.toLowerCase()) break;
 
-                        const proxVerso = prox.verso;
-                        if (proxVerso.includes('ENTR') || proxVerso === 'E' || proxVerso === 'IN' || proxVerso.includes('INGR')) {
+                        if (prox.verso === 'E' || prox.verso.includes('ENTR')) {
                             erroreTimbratura = true; // Doppia entrata
                             break;
                         }
-                        if (proxVerso.includes('USC') || proxVerso === 'U' || proxVerso === 'OUT' || proxVerso.includes('USCITA')) {
-                            dtOut = new Date(prox.dataOra);
+                        if (prox.verso === 'U' || prox.verso.includes('USC')) {
+                            dtOut = prox.dataOra;
                             break;
                         }
                     }
@@ -171,7 +165,7 @@ document.getElementById('btnElabora').addEventListener('click', async () => {
                     if (!dtOut) erroreTimbratura = true;
 
                     const dipKey = r.dipendente.toLowerCase();
-                    const cantiereAttuale = r.cantiere || 'Cantiere';
+                    const cantiereAttuale = r.cantiere;
                     const sedePura = mappaSedi[dipKey] || 'Milano (MI)';
 
                     let isPernottamento = false;
@@ -189,13 +183,18 @@ document.getElementById('btnElabora').addEventListener('click', async () => {
                         oreEffettuate = Math.round((diffMs / (1000 * 60 * 60)) * 100) / 100;
                     }
 
+                    // Formattazione data YYYY-MM-DD e ora HH:MM
+                    const pad = num => String(num).padStart(2, '0');
+                    const formatData = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+                    const formatOra = d => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+
                     risultati.push({
                         report_id: report.id,
                         dipendente: r.dipendente,
-                        giorno_entrata: isNaN(dtIn) ? '-' : dtIn.toISOString().split('T')[0],
-                        ora_entrata: isNaN(dtIn) ? '-' : dtIn.toTimeString().split(' ')[0].substring(0, 5),
-                        giorno_uscita: (dtOut && !isNaN(dtOut)) ? dtOut.toISOString().split('T')[0] : null,
-                        ora_uscita: (dtOut && !isNaN(dtOut)) ? dtOut.toTimeString().split(' ')[0].substring(0, 5) : null,
+                        giorno_entrata: formatData(dtIn),
+                        ora_entrata: formatOra(dtIn),
+                        giorno_uscita: dtOut ? formatData(dtOut) : null,
+                        ora_uscita: dtOut ? formatOra(dtOut) : null,
                         luogo_partenza: isPernottamento ? 'Pernottamento Cantiere' : sedePura,
                         luogo_cantiere: cantiereAttuale,
                         km_percorsi: km,
@@ -206,6 +205,7 @@ document.getElementById('btnElabora').addEventListener('click', async () => {
                 }
             }
 
+            // Salva nel Database Supabase
             if (risultati.length > 0) {
                 await _supabase.from('timbrature_elaborate').delete().eq('report_id', report.id);
                 const { error: errDB } = await _supabase.from('timbrature_elaborate').insert(risultati);
@@ -248,7 +248,7 @@ function renderTabella(dati) {
             <td class="p-3">${riga.giorno_uscita || '-'}</td>
             <td class="p-3">${riga.ora_uscita || '-'}</td>
             <td class="p-3">${riga.luogo_partenza}</td>
-            <td class="p-3">${riga.luogo_cantiere}</td>
+            <td class="p-3 text-xs max-w-xs truncate">${riga.luogo_cantiere}</td>
             <td class="p-3 text-center">${riga.km_percorsi} km</td>
             <td class="p-3 text-center font-semibold">${riga.ore_target} h</td>
             <td class="p-3 text-center font-semibold">${riga.errore_timbratura ? '-' : riga.ore_effettuate + ' h'}</td>
