@@ -3,7 +3,7 @@ const SUPABASE_URL = 'https://fasjhqmnzxhtnpiuvzdk.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_EqZTCd8mOinAbEXk2kYoIw_PTAOvGOv';
 const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// 2. POPOLAMENTO ANNI (2026 - 2060) AL CARICAMENTO DELLA PAGINA
+// 2. POPOLAMENTO ANNI (2026 - 2060)
 document.addEventListener('DOMContentLoaded', () => {
     const selectAnno = document.getElementById('selectAnno');
     if (selectAnno) {
@@ -20,12 +20,12 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 });
 
-// 3. REGOLAMENTO QTECH S.R.L. (Calcolo Target Ore)
+// 3. REGOLAMENTO QTECH S.R.L.
 function calcolaOreTarget(km, pernottamento) {
-    if (pernottamento || km <= 40) return 8.0;   // 0-40 km -> 8h[cite: 1]
-    if (km <= 100) return 7.5;                   // 41-100 km -> 7.5h[cite: 1]
-    if (km <= 150) return 6.5;                   // 101-150 km -> 6.5h[cite: 1]
-    return 8.0;                                  // Oltre 150 km -> 8h dal 2° gg[cite: 1]
+    if (pernottamento || km <= 40) return 8.0;   // 0-40 km -> 8h
+    if (km <= 100) return 7.5;                   // 41-100 km -> 7.5h
+    if (km <= 150) return 6.5;                   // 101-150 km -> 6.5h
+    return 8.0;                                  // Oltre 150 km -> 8h dal 2° gg
 }
 
 // 4. CONSULTAZIONE STORICO MESE / ANNO DA SUPABASE
@@ -136,7 +136,7 @@ document.getElementById('btnElabora').addEventListener('click', async () => {
 
                         const proxVerso = (prox.Verso || prox.verso || '').toString().toUpperCase().trim();
                         if (proxVerso === 'ENTRATA') {
-                            erroreTimbratura = true; // Nuova entrata senza uscita
+                            erroreTimbratura = true;
                             break;
                         }
                         if (proxVerso === 'USCITA') {
@@ -149,9 +149,8 @@ document.getElementById('btnElabora').addEventListener('click', async () => {
 
                     const cantiereAttuale = (r.Cantiere || r.Luogo || r.Citta || 'Cantiere').toString().trim();
                     const dipKey = nomeDip.toLowerCase();
-                    const sedePura = mappaSedi[dipKey] || 'Milano (MI)';[cite: 1]
+                    const sedePura = mappaSedi[dipKey] || 'Milano (MI)';
 
-                    // Controlla Pernottamento (stesso cantiere del giorno prima)
                     let isPernottamento = false;
                     if (cantiereGiornoPrecedente[dipKey] && cantiereGiornoPrecedente[dipKey] === cantiereAttuale) {
                         isPernottamento = true;
@@ -159,7 +158,7 @@ document.getElementById('btnElabora').addEventListener('click', async () => {
                     cantiereGiornoPrecedente[dipKey] = cantiereAttuale;
 
                     const km = isPernottamento ? 0 : parseFloat(r.Km || r.km || 0);
-                    const oreTarget = calcolaOreTarget(km, isPernottamento);[cite: 1]
+                    const oreTarget = calcolaOreTarget(km, isPernottamento);
 
                     let oreEffettuate = 0;
                     if (dtOut && !erroreTimbratura) {
@@ -184,7 +183,6 @@ document.getElementById('btnElabora').addEventListener('click', async () => {
                 }
             }
 
-            // Salva nel Database Supabase
             if (risultati.length > 0) {
                 await _supabase.from('timbrature_elaborate').delete().eq('report_id', report.id);
                 const { error: errDB } = await _supabase.from('timbrature_elaborate').insert(risultati);
@@ -206,7 +204,7 @@ document.getElementById('btnElabora').addEventListener('click', async () => {
     reader.readAsArrayBuffer(file);
 });
 
-// 6. DISEGNO TABELLA E CALCOLO DELLE MEDIE TOTALI
+// 6. DISEGNO TABELLA E CALCOLO MEDIE
 function renderTabella(dati) {
     const tbody = document.getElementById('tableBody');
     tbody.innerHTML = '';
