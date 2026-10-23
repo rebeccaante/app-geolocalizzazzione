@@ -3,76 +3,138 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gestione Timbrature QTECH</title>
-    <!-- Tailwind CSS, Supabase e SheetJS per Excel -->
+    <title>Gestione Presenze e Trasferte - QTECH S.r.l.</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
 </head>
-<body class="bg-slate-100 text-slate-800 p-6">
+<body class="bg-slate-100 min-h-screen text-slate-800 p-6">
+
     <div class="max-w-7xl mx-auto space-y-6">
         
-        <!-- Header con Selezione Mese/Anno dallo Storico -->
-        <header class="flex justify-between items-center bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+        <!-- HEADER E SCHEDE DI NAVIGAZIONE -->
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-xl shadow-sm border border-slate-200">
             <div>
                 <h1 class="text-2xl font-bold text-slate-900">Gestione Presenze e Trasferte</h1>
-                <p class="text-sm text-slate-500">Report mensile e calcolo automatico orari di cantiere</p>
+                <p class="text-sm text-slate-500">QTECH S.r.l. - Report mensile e calcolo distanze cantiere</p>
             </div>
             
-            <div class="flex items-center space-x-3 bg-slate-50 p-2 rounded-lg border">
-                <label class="text-xs font-semibold text-slate-600 uppercase">Storico:</label>
-                <select id="selectMese" class="bg-white border text-sm rounded-md px-3 py-1.5">
-                    <option value="1">Gennaio</option><option value="2">Febbraio</option><option value="3">Marzo</option>
-                    <option value="4">Aprile</option><option value="5">Maggio</option><option value="6">Giugno</option>
-                    <option value="7">Luglio</option><option value="8">Agosto</option><option value="9">Settembre</option>
-                    <option value="10" selected>Ottobre</option><option value="11">Novembre</option><option value="12">Dicembre</option>
-                </select>
-                <select id="selectAnno" class="bg-white border text-sm rounded-md px-3 py-1.5">
-                    <option value="2025">2025</option>
-                    <option value="2026" selected>2026</option>
-                    <option value="2027">2027</option>
-                </select>
-                <button id="btnCaricaStorico" class="bg-slate-800 text-white text-sm px-4 py-1.5 rounded-md hover:bg-slate-700">Visualizza</button>
+            <div class="flex gap-2">
+                <button id="tabElaborazione" class="px-4 py-2 text-sm font-semibold rounded-lg bg-blue-600 text-white shadow-sm">
+                    📁 Report & Timbrature
+                </button>
+                <button id="tabAnagrafica" class="px-4 py-2 text-sm font-semibold rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200">
+                    👥 Anagrafica Sedi Dipendenti
+                </button>
             </div>
-        </header>
+        </div>
 
-        <!-- Caricamento Nuovo Excel -->
-        <section class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-            <h2 class="text-lg font-semibold mb-3">Carica File Timbrature (.xlsx)</h2>
-            <div class="flex items-center space-x-4">
-                <input type="file" id="fileInput" accept=".xlsx, .xls" class="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"/>
-                <button id="btnElabora" class="bg-blue-600 text-white font-medium px-6 py-2 rounded-md hover:bg-blue-700 whitespace-nowrap">Elabora e Salva</button>
+        <!-- SEZIONE 1: ELABORAZIONE TIMBRATURE -->
+        <div id="sezioneElaborazione" class="space-y-6">
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex flex-col md:flex-row items-center justify-between gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-slate-700 mb-1">Carica File Timbrature (.xlsx)</label>
+                    <input type="file" id="fileInput" accept=".xlsx, .xls" class="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"/>
+                </div>
+
+                <div class="flex items-center gap-3">
+                    <div>
+                        <label class="block text-xs font-medium text-slate-500 mb-1">MESE</label>
+                        <select id="selectMese" class="bg-white border text-sm rounded-md px-3 py-1.5 focus:outline-none">
+                            <option value="1">Gennaio</option>
+                            <option value="2">Febbraio</option>
+                            <option value="3">Marzo</option>
+                            <option value="4">Aprile</option>
+                            <option value="5">Maggio</option>
+                            <option value="6">Giugno</option>
+                            <option value="7">Luglio</option>
+                            <option value="8">Agosto</option>
+                            <option value="9" selected>Settembre</option>
+                            <option value="10">Ottobre</option>
+                            <option value="11">Novembre</option>
+                            <option value="12">Dicembre</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-medium text-slate-500 mb-1">ANNO</label>
+                        <select id="selectAnno" class="bg-white border text-sm rounded-md px-3 py-1.5 focus:outline-none"></select>
+                    </div>
+
+                    <button id="btnCaricaStorico" class="mt-4 px-4 py-2 bg-slate-800 text-white rounded-md text-sm font-medium hover:bg-slate-900">
+                        Visualizza Storico
+                    </button>
+                    <button id="btnElabora" class="mt-4 px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-semibold hover:bg-blue-700">
+                        Elabora e Salva
+                    </button>
+                </div>
             </div>
-        </section>
 
-        <!-- Tabella Risultati Essenziale -->
-        <section class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-            <div class="overflow-x-auto">
+            <!-- TABELLA RISULTATI -->
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-sm">
+                        <thead class="bg-slate-800 text-white text-xs uppercase tracking-wider">
+                            <tr>
+                                <th class="p-3">Dipendente</th>
+                                <th class="p-3">Giorno Entrata</th>
+                                <th class="p-3">Ora Entrata</th>
+                                <th class="p-3">Giorno Uscita</th>
+                                <th class="p-3">Ora Uscita</th>
+                                <th class="p-3">Sede Partenza</th>
+                                <th class="p-3">Luogo Cantiere</th>
+                                <th class="p-3 text-center">Km</th>
+                                <th class="p-3 text-center">Ore Target</th>
+                                <th class="p-3 text-center">Ore Effettuate</th>
+                                <th class="p-3">Note</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tableBody" class="divide-y divide-slate-200"></tbody>
+                        <tfoot id="tableFooter" class="bg-slate-900 text-white font-bold"></tfoot>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- SEZIONE 2: GESTIONE ANAGRAFICA SEDI -->
+        <div id="sezioneAnagrafica" class="hidden space-y-6">
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                <h2 class="text-lg font-bold text-slate-900 mb-4">Aggiungi / Modifica Sede Dipendente</h2>
+                <div class="flex flex-col md:flex-row gap-4 items-end">
+                    <div class="flex-1">
+                        <label class="block text-xs font-medium text-slate-500 mb-1">COGNOME E NOME (Es. BRAMBILLA MARCO)</label>
+                        <input type="text" id="inputNomeDipendente" placeholder="COGNOME NOME" class="w-full border rounded-md px-3 py-2 text-sm focus:outline-none"/>
+                    </div>
+                    <div class="flex-1">
+                        <label class="block text-xs font-medium text-slate-500 mb-1">SEDE DI APPARTENENZA</label>
+                        <select id="selectSedeAppartenenza" class="w-full border rounded-md px-3 py-2 text-sm focus:outline-none">
+                            <option value="Milano (Via Gentile 7)">Milano (Via Gentile 7)</option>
+                            <option value="San Giovanni Lupatoto (VR)">San Giovanni Lupatoto (VR)</option>
+                        </select>
+                    </div>
+                    <button id="btnSalvaDipendente" class="px-6 py-2 bg-green-600 text-white text-sm font-semibold rounded-md hover:bg-green-700">
+                        Salva Dipendente
+                    </button>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                <div class="p-4 bg-slate-50 border-b border-slate-200 font-bold text-slate-700">
+                    Elenco Dipendenti e Sedi Assegnate
+                </div>
                 <table class="w-full text-left text-sm">
-                    <thead class="bg-slate-100 text-slate-700 font-semibold border-b">
+                    <thead class="bg-slate-100 text-slate-600 text-xs uppercase">
                         <tr>
                             <th class="p-3">Dipendente</th>
-                            <th class="p-3">Giorno Entrata</th>
-                            <th class="p-3">Ora Entrata</th>
-                            <th class="p-3">Giorno Uscita</th>
-                            <th class="p-3">Ora Uscita</th>
-                            <th class="p-3">Luogo Partenza</th>
-                            <th class="p-3">Luogo Cantiere</th>
-                            <th class="p-3 text-center">Km Percorsi</th>
-                            <th class="p-3 text-center">Ore Target</th>
-                            <th class="p-3 text-center">Ore Effettuate</th>
-                            <th class="p-3">Note</th>
+                            <th class="p-3">Sede Assegnata</th>
+                            <th class="p-3 text-right">Azione</th>
                         </tr>
                     </thead>
-                    <tbody id="tableBody" class="divide-y divide-slate-200">
-                        <!-- Popolato via JS -->
-                    </tbody>
-                    <tfoot id="tableFooter" class="bg-slate-900 text-white font-semibold">
-                        <!-- Riga con la media finale -->
-                    </tfoot>
+                    <tbody id="tableAnagraficaBody" class="divide-y divide-slate-200"></tbody>
                 </table>
             </div>
-        </section>
+        </div>
+
     </div>
 
     <script src="app.js"></script>
