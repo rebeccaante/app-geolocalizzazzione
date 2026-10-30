@@ -12,11 +12,11 @@
 
     <div class="max-w-7xl mx-auto space-y-6">
         
-        <!-- HEADER E SCHEDE DI NAVIGAZIONE -->
+        <!-- HEADER E NAVIGAZIONE -->
         <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-xl shadow-sm border border-slate-200">
             <div>
                 <h1 class="text-2xl font-bold text-slate-900">Gestione Presenze e Trasferte</h1>
-                <p class="text-sm text-slate-500">QTECH S.r.l. - Report mensile e calcolo distanze cantiere</p>
+                <p class="text-sm text-slate-500">QTECH S.r.l. - Report mensile e calcolo automatico orari di cantiere</p>
             </div>
             
             <div class="flex gap-2">
@@ -29,18 +29,18 @@
             </div>
         </div>
 
-        <!-- SEZIONE 1: ELABORAZIONE TIMBRATURE -->
+        <!-- SEZIONE 1: REPORT E TIMBRATURE -->
         <div id="sezioneElaborazione" class="space-y-6">
-            <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex flex-col md:flex-row items-center justify-between gap-4">
-                <div>
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex flex-col lg:flex-row items-center justify-between gap-4">
+                <div class="w-full lg:w-auto">
                     <label class="block text-sm font-medium text-slate-700 mb-1">Carica File Timbrature (.xlsx)</label>
                     <input type="file" id="fileInput" accept=".xlsx, .xls" class="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"/>
                 </div>
 
-                <div class="flex items-center gap-3">
+                <div class="flex flex-wrap items-center gap-3 w-full lg:w-auto justify-end">
                     <div>
                         <label class="block text-xs font-medium text-slate-500 mb-1">MESE</label>
-                        <select id="selectMese" class="bg-white border text-sm rounded-md px-3 py-1.5 focus:outline-none">
+                        <select id="selectMese" class="bg-white border text-sm rounded-md px-3 py-2 focus:outline-none border-slate-300">
                             <option value="1">Gennaio</option>
                             <option value="2">Febbraio</option>
                             <option value="3">Marzo</option>
@@ -58,22 +58,24 @@
 
                     <div>
                         <label class="block text-xs font-medium text-slate-500 mb-1">ANNO</label>
-                        <select id="selectAnno" class="bg-white border text-sm rounded-md px-3 py-1.5 focus:outline-none"></select>
+                        <select id="selectAnno" class="bg-white border text-sm rounded-md px-3 py-2 focus:outline-none border-slate-300"></select>
                     </div>
 
-                    <button id="btnCaricaStorico" class="mt-4 px-4 py-2 bg-slate-800 text-white rounded-md text-sm font-medium hover:bg-slate-900">
-                        Visualizza Storico
-                    </button>
-                    <button id="btnElabora" class="mt-4 px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-semibold hover:bg-blue-700">
-                        Elabora e Salva
-                    </button>
+                    <div class="flex gap-2 mt-4">
+                        <button id="btnElabora" class="px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-semibold hover:bg-blue-700 shadow-sm">
+                            Elabora e Salva
+                        </button>
+                        <button id="btnScaricaReport" class="px-4 py-2 bg-emerald-600 text-white rounded-md text-sm font-semibold hover:bg-emerald-700 shadow-sm flex items-center gap-1">
+                            📊 Scarica Report
+                        </button>
+                    </div>
                 </div>
             </div>
 
-            <!-- TABELLA RISULTATI -->
+            <!-- TABELLA DEL REPORT -->
             <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
                 <div class="overflow-x-auto">
-                    <table class="w-full text-left text-sm">
+                    <table class="w-full text-left text-sm" id="mainTable">
                         <thead class="bg-slate-800 text-white text-xs uppercase tracking-wider">
                             <tr>
                                 <th class="p-3">Dipendente</th>
@@ -96,7 +98,7 @@
             </div>
         </div>
 
-        <!-- SEZIONE 2: GESTIONE ANAGRAFICA SEDI -->
+        <!-- SEZIONE 2: ANAGRAFICA SEDI -->
         <div id="sezioneAnagrafica" class="hidden space-y-6">
             <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
                 <h2 class="text-lg font-bold text-slate-900 mb-4">Aggiungi / Modifica Sede Dipendente</h2>
