@@ -9,7 +9,7 @@ const COORDINATE_SEDI = {
     'verona': { lat: 45.3855, lon: 11.0362, nome: 'San Giovanni Lupatoto (VR)' }
 };
 
-let datiTabellaCorrenti = []; // Memorizza i dati del mese selezionato
+let datiTabellaCorrenti = [];
 
 function calcolaDistanzaKm(lat1, lon1, lat2, lon2) {
     if (!lat1 || !lon1 || !lat2 || !lon2) return 0;
@@ -30,7 +30,7 @@ function calcolaOreTarget(km, pernottamento) {
     return 8.0;
 }
 
-// 2. NAVIGAZIONE SCHEDE (TABS)
+// 2. NAVIGAZIONE SCHEDE
 const tabElaborazione = document.getElementById('tabElaborazione');
 const tabAnagrafica = document.getElementById('tabAnagrafica');
 const sezioneElaborazione = document.getElementById('sezioneElaborazione');
@@ -53,7 +53,7 @@ if (tabElaborazione && tabAnagrafica) {
     });
 }
 
-// 3. AVVIO E LISTENERS SUI SELECT MESE / ANNO
+// 3. AVVIO
 document.addEventListener('DOMContentLoaded', () => {
     const selectAnno = document.getElementById('selectAnno');
     const selectMese = document.getElementById('selectMese');
@@ -77,7 +77,7 @@ document.addEventListener('DOMContentLoaded', () => {
     caricaAnagrafica();
 });
 
-// 4. GESTIONE ANAGRAFICA DIPENDENTI
+// 4. ANAGRAFICA
 async function caricaAnagrafica() {
     try {
         const { data: dipendenti } = await _supabase.from('dipendenti').select('*').order('nome_cognome');
@@ -134,13 +134,12 @@ async function eliminaDipendente(id) {
     }
 }
 
-// 5. CARICAMENTO AUTOMATICO DEL REPORT SALVATO DA SUPABASE
+// 5. CARICAMENTO AUTOMATICO DA SUPABASE
 async function caricaReportDaDatabase() {
     const mese = parseInt(document.getElementById('selectMese').value);
     const anno = parseInt(document.getElementById('selectAnno').value);
 
     try {
-        // Cerca il report per anno e mese
         const { data: reports, error: errRep } = await _supabase
             .from('report_mensili')
             .select('id')
@@ -155,7 +154,6 @@ async function caricaReportDaDatabase() {
 
         const reportId = reports[0].id;
 
-        // Recupera le timbrature salvate per questo specifico report
         const { data: timbrature, error: errTimb } = await _supabase
             .from('timbrature_elaborate')
             .select('*')
@@ -171,7 +169,7 @@ async function caricaReportDaDatabase() {
         renderTabella(datiTabellaCorrenti);
 
     } catch (err) {
-        console.error('Errore durante la lettura da Supabase:', err);
+        console.error('Errore lettura Supabase:', err);
     }
 }
 
@@ -209,7 +207,6 @@ document.getElementById('btnElabora').addEventListener('click', async () => {
             const mese = parseInt(document.getElementById('selectMese').value);
             const anno = parseInt(document.getElementById('selectAnno').value);
 
-            // Cerca o crea la riga in report_mensili
             let { data: reports } = await _supabase.from('report_mensili').select('id').eq('anno', anno).eq('mese', mese);
             let reportId = null;
 
@@ -282,12 +279,11 @@ document.getElementById('btnElabora').addEventListener('click', async () => {
                         const diffMs = dtOut - dtIn;
                         let oreGrezze = diffMs / (1000 * 60 * 60);
 
-                        // NOTTURNO DALLE 21:00 IN POI (O OVERNIGHT)
                         const oraIngresso = dtIn.getHours();
                         const isNotturno = (oraIngresso >= 21 || oraIngresso < 5) || (dtIn.getDate() !== dtOut.getDate());
 
                         if (!isNotturno && oreGrezze > 4.0) {
-                            oreGrezze = Math.max(0, oreGrezze - 0.5); // Detrazione 30 min pausa pranzo
+                            oreGrezze = Math.max(0, oreGrezze - 0.5);
                         }
 
                         const oreEffettuate = Math.round(oreGrezze * 100) / 100;
@@ -313,8 +309,8 @@ document.getElementById('btnElabora').addEventListener('click', async () => {
                             dipendente: r.dipendente,
                             giorno_entrata: formatData(dtIn),
                             ora_entrata: formatOra(dtIn),
-                            giorno_uscita: null,
-                            ora_uscita: null,
+                            giorno_uscita: '',
+                            ora_uscita: '',
                             luogo_partenza: isPernottamento ? 'Pernottamento Cantiere' : coordSede.nome,
                             luogo_cantiere: r.posizione || `${r.lat}, ${r.lon}`,
                             km_percorsi: kmFinali,
@@ -330,8 +326,8 @@ document.getElementById('btnElabora').addEventListener('click', async () => {
                     risultati.push({
                         report_id: reportId,
                         dipendente: r.dipendente,
-                        giorno_entrata: null,
-                        ora_entrata: null,
+                        giorno_entrata: '',
+                        ora_entrata: '',
                         giorno_uscita: formatData(r.dataOra),
                         ora_uscita: formatOra(r.dataOra),
                         luogo_partenza: nomeSede,
@@ -345,18 +341,20 @@ document.getElementById('btnElabora').addEventListener('click', async () => {
                 }
             }
 
-            // Cancella i vecchi dati di quel mese prima di salvare quelli nuovi
+            // Pulisce e Inserisce su Supabase
             if (risultati.length > 0) {
                 await _supabase.from('timbrature_elaborate').delete().eq('report_id', reportId);
                 const { error: errSave } = await _supabase.from('timbrature_elaborate').insert(risultati);
                 if (errSave) {
                     console.error('Errore salvataggio Supabase:', errSave);
+                    alert('Errore nel salvataggio del report: ' + errSave.message);
+                    return;
                 }
             }
 
             datiTabellaCorrenti = risultati;
             renderTabella(datiTabellaCorrenti);
-            alert('Elaborazione salvata con successo sul Cloud!');
+            alert('Elaborazione completata e salvata correttamente sul Cloud!');
 
         } catch (err) {
             console.error(err);
@@ -426,7 +424,7 @@ function renderTabella(dati) {
     `;
 }
 
-// 8. ESPORTAZIONE TABELLA IN FILE EXCEL (.XLSX)
+// 8. ESPORTAZIONE TABELLA IN EXCEL (.XLSX)
 document.getElementById('btnScaricaReport').addEventListener('click', () => {
     if (!datiTabellaCorrenti || datiTabellaCorrenti.length === 0) {
         alert('Nessun dato visibile da scaricare!');
