@@ -34,22 +34,24 @@ const tabAnagrafica = document.getElementById('tabAnagrafica');
 const sezioneElaborazione = document.getElementById('sezioneElaborazione');
 const sezioneAnagrafica = document.getElementById('sezioneAnagrafica');
 
-tabElaborazione.addEventListener('click', () => {
-    sezioneElaborazione.classList.remove('hidden');
-    sezioneAnagrafica.classList.add('hidden');
-    tabElaborazione.className = 'px-4 py-2 text-sm font-semibold rounded-lg bg-blue-600 text-white shadow-sm';
-    tabAnagrafica.className = 'px-4 py-2 text-sm font-semibold rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200';
-});
+if (tabElaborazione && tabAnagrafica) {
+    tabElaborazione.addEventListener('click', () => {
+        sezioneElaborazione.classList.remove('hidden');
+        sezioneAnagrafica.classList.add('hidden');
+        tabElaborazione.className = 'px-4 py-2 text-sm font-semibold rounded-lg bg-blue-600 text-white shadow-sm';
+        tabAnagrafica.className = 'px-4 py-2 text-sm font-semibold rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200';
+    });
 
-tabAnagrafica.addEventListener('click', () => {
-    sezioneAnagrafica.classList.remove('hidden');
-    sezioneElaborazione.classList.add('hidden');
-    tabAnagrafica.className = 'px-4 py-2 text-sm font-semibold rounded-lg bg-blue-600 text-white shadow-sm';
-    tabElaborazione.className = 'px-4 py-2 text-sm font-semibold rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200';
-    caricaAnagrafica();
-});
+    tabAnagrafica.addEventListener('click', () => {
+        sezioneAnagrafica.classList.remove('hidden');
+        sezioneElaborazione.classList.add('hidden');
+        tabAnagrafica.className = 'px-4 py-2 text-sm font-semibold rounded-lg bg-blue-600 text-white shadow-sm';
+        tabElaborazione.className = 'px-4 py-2 text-sm font-semibold rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200';
+        caricaAnagrafica();
+    });
+}
 
-// 3. INIZIALIZZAZIONE ANNI
+// 3. INIZIALIZZAZIONE ANNI ED EVENTI
 document.addEventListener('DOMContentLoaded', () => {
     const selectAnno = document.getElementById('selectAnno');
     if (selectAnno) {
@@ -63,43 +65,58 @@ document.addEventListener('DOMContentLoaded', () => {
             selectAnno.appendChild(option);
         }
     }
+    caricaAnagrafica();
 });
 
 // 4. GESTIONE ANAGRAFICA DIPENDENTI
 async function caricaAnagrafica() {
-    const { data: dipendenti } = await _supabase.from('dipendenti').select('*').order('nome_cognome');
-    const tbody = document.getElementById('tableAnagraficaBody');
-    tbody.innerHTML = '';
+    try {
+        const { data: dipendenti } = await _supabase.from('dipendenti').select('*').order('nome_cognome');
+        const tbody = document.getElementById('tableAnagraficaBody');
+        if (!tbody) return;
+        tbody.innerHTML = '';
 
-    if (dipendenti) {
-        dipendenti.forEach(d => {
-            const tr = document.createElement('tr');
-            tr.innerHTML = `
-                <td class="p-3 font-medium text-slate-800">${d.nome_cognome}</td>
-                <td class="p-3 text-slate-600">${d.sede_appartenenza}</td>
-                <td class="p-3 text-right">
-                    <button onclick="eliminaDipendente('${d.id}')" class="text-red-600 hover:underline text-xs font-bold">Elimina</button>
-                </td>
-            `;
-            tbody.appendChild(tr);
-        });
+        if (dipendenti && dipendenti.length > 0) {
+            dipendenti.forEach(d => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td class="p-3 font-medium text-slate-800">${d.nome_cognome}</td>
+                    <td class="p-3 text-slate-600">${d.sede_appartenenza}</td>
+                    <td class="p-3 text-right">
+                        <button onclick="eliminaDipendente('${d.id}')" class="text-red-600 hover:underline text-xs font-bold">Elimina</button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        } else {
+            tbody.innerHTML = `<tr><td colspan="3" class="p-4 text-center text-slate-400">Nessun dipendente in anagrafica</td></tr>`;
+        }
+    } catch (err) {
+        console.error('Errore caricaAnagrafica:', err);
     }
 }
 
-document.getElementById('btnSalvaDipendente').addEventListener('click', async () => {
-    const nome = document.getElementById('inputNomeDipendente').value.trim().toUpperCase();
-    const sede = document.getElementById('selectSedeAppartenenza').value;
+const btnSalvaDip = document.getElementById('btnSalvaDipendente');
+if (btnSalvaDip) {
+    btnSalvaDip.addEventListener('click', async () => {
+        const nome = document.getElementById('inputNomeDipendente').value.trim().toUpperCase();
+        const sede = document.getElementById('selectSedeAppartenenza').value;
 
-    if (!nome) {
-        alert('Inserisci il nome e cognome del dipendente!');
-        return;
-    }
+        if (!nome) {
+            alert('Inserisci il nome e cognome del dipendente!');
+            return;
+        }
 
-    await _supabase.from('dipendenti').upsert([{ nome_cognome: nome, sede_appartenenza: sede }], { onConflict: 'nome_cognome' });
-    document.getElementById('inputNomeDipendente').value = '';
-    caricaAnagrafica();
-    alert('Dipendente salvato con successo!');
-});
+        const { error } = await _supabase.from('dipendenti').upsert([{ nome_cognome: nome, sede_appartenenza: sede }], { onConflict: 'nome_cognome' });
+        if (error) {
+            alert('Errore durante il salvataggio: ' + error.message);
+        } else {
+            document.getElementById('inputNomeDipendente').value = '';
+            caricaAnagrafica();
+            alert('Dipendente salvato con successo!');
+        }
+    });
+}
 
 async function eliminaDipendente(id) {
     if (confirm('Vuoi davvero eliminare questo dipendente dall\'anagrafica?')) {
@@ -108,7 +125,59 @@ async function eliminaDipendente(id) {
     }
 }
 
-// 5. CARICAMENTO ED ELABORAZIONE TIMBRATURE
+// 5. CONSULTAZIONE STORICO ROBUSTA
+document.getElementById('btnCaricaStorico').addEventListener('click', async () => {
+    const mese = parseInt(document.getElementById('selectMese').value);
+    const anno = parseInt(document.getElementById('selectAnno').value);
+
+    const btn = document.getElementById('btnCaricaStorico');
+    btn.disabled = true;
+    btn.innerText = 'Caricamento...';
+
+    try {
+        const { data: reports, error: errRep } = await _supabase
+            .from('report_mensili')
+            .select('id')
+            .eq('anno', anno)
+            .eq('mese', mese);
+
+        if (errRep || !reports || reports.length === 0) {
+            alert('Nessun report salvato per il mese e anno selezionati.');
+            document.getElementById('tableBody').innerHTML = '';
+            document.getElementById('tableFooter').innerHTML = '';
+            return;
+        }
+
+        const reportId = reports[0].id;
+
+        const { data: timbrature, error: errTimb } = await _supabase
+            .from('timbrature_elaborate')
+            .select('*')
+            .eq('report_id', reportId)
+            .order('id', { ascending: true });
+
+        if (errTimb) throw errTimb;
+
+        if (!timbrature || timbrature.length === 0) {
+            alert('Nessuna timbratura trovata nel report selezionato.');
+            document.getElementById('tableBody').innerHTML = '';
+            document.getElementById('tableFooter').innerHTML = '';
+            return;
+        }
+
+        renderTabella(timbrature);
+        alert(`Storico caricato con successo (${timbrature.length} timbrature)!`);
+
+    } catch (err) {
+        console.error(err);
+        alert('Errore nel recupero dello storico: ' + (err.message || err));
+    } finally {
+        btn.disabled = false;
+        btn.innerText = 'Visualizza Storico';
+    }
+});
+
+// 6. CARICAMENTO ED ELABORAZIONE EXCEL CON DETRAZIONE PRANZO (NOTTURNO DALLE 21 IN POI)
 document.getElementById('btnElabora').addEventListener('click', async () => {
     const fileInput = document.getElementById('fileInput');
     const file = fileInput.files[0];
@@ -131,7 +200,6 @@ document.getElementById('btnElabora').addEventListener('click', async () => {
             const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
             const righeGrezze = XLSX.utils.sheet_to_json(firstSheet);
 
-            // Carica anagrafica sedi aggiornata da Supabase
             const { data: dipendentiAnagrafica } = await _supabase.from('dipendenti').select('*');
             const mappaSedi = {};
             if (dipendentiAnagrafica) {
@@ -143,11 +211,15 @@ document.getElementById('btnElabora').addEventListener('click', async () => {
             const mese = parseInt(document.getElementById('selectMese').value);
             const anno = parseInt(document.getElementById('selectAnno').value);
 
-            let { data: report } = await _supabase.from('report_mensili').select('id').eq('anno', anno).eq('mese', mese).maybeSingle();
-            if (!report) {
+            let { data: reports } = await _supabase.from('report_mensili').select('id').eq('anno', anno).eq('mese', mese);
+            let reportId = null;
+
+            if (!reports || reports.length === 0) {
                 const { data: newReport, error: errIns } = await _supabase.from('report_mensili').insert([{ anno, mese }]).select().single();
                 if (errIns) throw errIns;
-                report = newReport;
+                reportId = newReport.id;
+            } else {
+                reportId = reports[0].id;
             }
 
             const righe = righeGrezze.map(r => {
@@ -209,10 +281,22 @@ document.getElementById('btnElabora').addEventListener('click', async () => {
 
                     if (coppiaperta && dtOut) {
                         const diffMs = dtOut - dtIn;
-                        const oreEffettuate = Math.round((diffMs / (1000 * 60 * 60)) * 100) / 100;
+                        let oreGrezze = diffMs / (1000 * 60 * 60);
+
+                        // REGOLE NOTTURNO:
+                        // Entrata dalle 21:00 in poi, o prima delle 05:00 del mattino, oppure se supera la mezzanotte (data diversa)
+                        const oraIngresso = dtIn.getHours();
+                        const isNotturno = (oraIngresso >= 21 || oraIngresso < 5) || (dtIn.getDate() !== dtOut.getDate());
+
+                        // Togli 30 min (0.5 h) SOLO se NON è un turno notturno e la durata è > 4 ore
+                        if (!isNotturno && oreGrezze > 4.0) {
+                            oreGrezze = Math.max(0, oreGrezze - 0.5);
+                        }
+
+                        const oreEffettuate = Math.round(oreGrezze * 100) / 100;
 
                         risultati.push({
-                            report_id: report.id,
+                            report_id: reportId,
                             dipendente: r.dipendente,
                             giorno_entrata: formatData(dtIn),
                             ora_entrata: formatOra(dtIn),
@@ -228,7 +312,7 @@ document.getElementById('btnElabora').addEventListener('click', async () => {
                         i += 2;
                     } else {
                         risultati.push({
-                            report_id: report.id,
+                            report_id: reportId,
                             dipendente: r.dipendente,
                             giorno_entrata: formatData(dtIn),
                             ora_entrata: formatOra(dtIn),
@@ -247,7 +331,7 @@ document.getElementById('btnElabora').addEventListener('click', async () => {
                     const dipKey = r.dipendente.toLowerCase();
                     const nomeSede = mappaSedi[dipKey] || 'Milano (Via Gentile 7)';
                     risultati.push({
-                        report_id: report.id,
+                        report_id: reportId,
                         dipendente: r.dipendente,
                         giorno_entrata: null,
                         ora_entrata: null,
@@ -265,12 +349,12 @@ document.getElementById('btnElabora').addEventListener('click', async () => {
             }
 
             if (risultati.length > 0) {
-                await _supabase.from('timbrature_elaborate').delete().eq('report_id', report.id);
+                await _supabase.from('timbrature_elaborate').delete().eq('report_id', reportId);
                 await _supabase.from('timbrature_elaborate').insert(risultati);
             }
 
             renderTabella(risultati);
-            alert('Elaborazione completata!');
+            alert('Elaborazione salvata correttamente!');
 
         } catch (err) {
             console.error(err);
@@ -284,6 +368,7 @@ document.getElementById('btnElabora').addEventListener('click', async () => {
     reader.readAsArrayBuffer(file);
 });
 
+// 7. RENDER TABELLA E MEDIE
 function renderTabella(dati) {
     const tbody = document.getElementById('tableBody');
     tbody.innerHTML = '';
