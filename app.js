@@ -9,7 +9,7 @@ const COORDINATE_SEDI = {
     'verona': { lat: 45.3855, lon: 11.0362, nome: 'San Giovanni Lupatoto (VR)' }
 };
 
-let datiTabellaCorrenti = []; // Memorizza i dati del mese selezionato
+let datiTabellaCorrenti = [];
 
 function calcolaDistanzaKm(lat1, lon1, lat2, lon2) {
     if (!lat1 || !lon1 || !lat2 || !lon2) return 0;
@@ -31,29 +31,6 @@ function calcolaOreTarget(km, pernottamento) {
 }
 
 // 2. NAVIGAZIONE SCHEDE (TABS)
-const tabElaborazione = document.getElementById('tabElaborazione');
-const tabAnagrafica = document.getElementById('tabAnagrafica');
-const sezioneElaborazione = document.getElementById('sezioneElaborazione');
-const sezioneAnagrafica = document.getElementById('sezioneAnagrafica');
-
-if (tabElaborazione && tabAnagrafica) {
-    tabElaborazione.addEventListener('click', () => {
-        sezioneElaborazione.classList.remove('hidden');
-        sezioneAnagrafica.classList.add('hidden');
-        tabElaborazione.className = 'px-4 py-2 text-sm font-semibold rounded-lg bg-blue-600 text-white shadow-sm';
-        tabAnagrafica.className = 'px-4 py-2 text-sm font-semibold rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200';
-    });
-
-    tabAnagrafica.addEventListener('click', () => {
-        sezioneAnagrafica.classList.remove('hidden');
-        sezioneElaborazione.classList.add('hidden');
-        tabAnagrafica.className = 'px-4 py-2 text-sm font-semibold rounded-lg bg-blue-600 text-white shadow-sm';
-        tabElaborazione.className = 'px-4 py-2 text-sm font-semibold rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200';
-        caricaAnagrafica();
-    });
-}
-
-// 3. AVVIO E LISTENERS SUI SELECT MESE / ANNO
 document.addEventListener('DOMContentLoaded', () => {
     const selectAnno = document.getElementById('selectAnno');
     const selectMese = document.getElementById('selectMese');
@@ -73,16 +50,43 @@ document.addEventListener('DOMContentLoaded', () => {
         selectMese.addEventListener('change', caricaReportDaDatabase);
     }
 
-    const btnScarica = document.getElementById('btnScaricaReport');
-    if (btnScarica) {
-        btnScarica.addEventListener('click', scaricaReportExcel);
+    const tabElaborazione = document.getElementById('tabElaborazione');
+    const tabAnagrafica = document.getElementById('tabAnagrafica');
+    const sezioneElaborazione = document.getElementById('sezioneElaborazione');
+    const sezioneAnagrafica = document.getElementById('sezioneAnagrafica');
+
+    if (tabElaborazione && tabAnagrafica) {
+        tabElaborazione.addEventListener('click', () => {
+            sezioneElaborazione.classList.remove('hidden');
+            sezioneAnagrafica.classList.add('hidden');
+            tabElaborazione.className = 'px-4 py-2 text-sm font-semibold rounded-lg bg-blue-600 text-white shadow-sm';
+            tabAnagrafica.className = 'px-4 py-2 text-sm font-semibold rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200';
+            caricaReportDaDatabase(); // Ricarica la tabella quando si torna a questa sezione
+        });
+
+        tabAnagrafica.addEventListener('click', () => {
+            sezioneAnagrafica.classList.remove('hidden');
+            sezioneElaborazione.classList.add('hidden');
+            tabAnagrafica.className = 'px-4 py-2 text-sm font-semibold rounded-lg bg-blue-600 text-white shadow-sm';
+            tabElaborazione.className = 'px-4 py-2 text-sm font-semibold rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200';
+            caricaAnagrafica();
+        });
     }
+
+    const btnElabora = document.getElementById('btnElabora');
+    if (btnElabora) btnElabora.addEventListener('click', elaboraFileExcel);
+
+    const btnScarica = document.getElementById('btnScaricaReport');
+    if (btnScarica) btnScarica.addEventListener('click', scaricaReportExcel);
+
+    const btnSalvaDip = document.getElementById('btnSalvaDipendente');
+    if (btnSalvaDip) btnSalvaDip.addEventListener('click', salvaDipendenteAnagrafica);
 
     caricaReportDaDatabase();
     caricaAnagrafica();
 });
 
-// 4. GESTIONE ANAGRAFICA DIPENDENTI
+// 3. ANAGRAFICA DIPENDENTI
 async function caricaAnagrafica() {
     try {
         const { data: dipendenti } = await _supabase.from('dipendenti').select('*').order('nome_cognome');
@@ -110,26 +114,23 @@ async function caricaAnagrafica() {
     }
 }
 
-const btnSalvaDip = document.getElementById('btnSalvaDipendente');
-if (btnSalvaDip) {
-    btnSalvaDip.addEventListener('click', async () => {
-        const nome = document.getElementById('inputNomeDipendente').value.trim().toUpperCase();
-        const sede = document.getElementById('selectSedeAppartenenza').value;
+async function salvaDipendenteAnagrafica() {
+    const nome = document.getElementById('inputNomeDipendente').value.trim().toUpperCase();
+    const sede = document.getElementById('selectSedeAppartenenza').value;
 
-        if (!nome) {
-            alert('Inserisci il nome e cognome del dipendente!');
-            return;
-        }
+    if (!nome) {
+        alert('Inserisci il nome e cognome del dipendente!');
+        return;
+    }
 
-        const { error } = await _supabase.from('dipendenti').upsert([{ nome_cognome: nome, sede_appartenenza: sede }], { onConflict: 'nome_cognome' });
-        if (error) {
-            alert('Errore durante il salvataggio: ' + error.message);
-        } else {
-            document.getElementById('inputNomeDipendente').value = '';
-            caricaAnagrafica();
-            alert('Dipendente salvato con successo!');
-        }
-    });
+    const { error } = await _supabase.from('dipendenti').upsert([{ nome_cognome: nome, sede_appartenenza: sede }], { onConflict: 'nome_cognome' });
+    if (error) {
+        alert('Errore durante il salvataggio: ' + error.message);
+    } else {
+        document.getElementById('inputNomeDipendente').value = '';
+        caricaAnagrafica();
+        alert('Dipendente salvato con successo!');
+    }
 }
 
 async function eliminaDipendente(id) {
@@ -139,17 +140,17 @@ async function eliminaDipendente(id) {
     }
 }
 
-// 5. CARICAMENTO AUTOMATICO DEL REPORT SALVATO DA SUPABASE
+// 4. CARICAMENTO AUTOMATICO REPORT DA SUPABASE
 async function caricaReportDaDatabase() {
-    const mese = parseInt(document.getElementById('selectMese').value);
-    const anno = parseInt(document.getElementById('selectAnno').value);
+    const meseNum = parseInt(document.getElementById('selectMese').value);
+    const annoNum = parseInt(document.getElementById('selectAnno').value);
 
     try {
         const { data: reports, error: errRep } = await _supabase
             .from('report_mensili')
             .select('id')
-            .eq('anno', anno)
-            .eq('mese', mese);
+            .eq('anno', annoNum)
+            .eq('mese', meseNum);
 
         if (errRep || !reports || reports.length === 0) {
             datiTabellaCorrenti = [];
@@ -174,14 +175,14 @@ async function caricaReportDaDatabase() {
         renderTabella(datiTabellaCorrenti);
 
     } catch (err) {
-        console.error('Errore durante la lettura da Supabase:', err);
+        console.error('Errore lettura Supabase:', err);
     }
 }
 
-// 6. CARICAMENTO ED ELABORAZIONE FILE EXCEL
-document.getElementById('btnElabora').addEventListener('click', async () => {
+// 5. ELABORAZIONE FILE EXCEL E SALVATAGGIO REALE SU SUPABASE
+async function elaboraFileExcel() {
     const fileInput = document.getElementById('fileInput');
-    const file = fileInput.files[0];
+    const file = fileInput ? fileInput.files[0] : null;
 
     if (!file) {
         alert('Seleziona prima un file Excel!');
@@ -209,14 +210,23 @@ document.getElementById('btnElabora').addEventListener('click', async () => {
                 });
             }
 
-            const mese = parseInt(document.getElementById('selectMese').value);
-            const anno = parseInt(document.getElementById('selectAnno').value);
+            const meseNum = parseInt(document.getElementById('selectMese').value);
+            const annoNum = parseInt(document.getElementById('selectAnno').value);
 
-            let { data: reports } = await _supabase.from('report_mensili').select('id').eq('anno', anno).eq('mese', mese);
+            let { data: reports } = await _supabase
+                .from('report_mensili')
+                .select('id')
+                .eq('anno', annoNum)
+                .eq('mese', meseNum);
+
             let reportId = null;
 
             if (!reports || reports.length === 0) {
-                const { data: newReport, error: errIns } = await _supabase.from('report_mensili').insert([{ anno, mese }]).select().single();
+                const { data: newReport, error: errIns } = await _supabase
+                    .from('report_mensili')
+                    .insert([{ anno: annoNum, mese: meseNum }])
+                    .select()
+                    .single();
                 if (errIns) throw errIns;
                 reportId = newReport.id;
             } else {
@@ -347,14 +357,15 @@ document.getElementById('btnElabora').addEventListener('click', async () => {
             }
 
             if (risultati.length > 0) {
+                // Cancella le righe precedenti di quel report e salva quelle nuove
                 await _supabase.from('timbrature_elaborate').delete().eq('report_id', reportId);
                 const { error: errSave } = await _supabase.from('timbrature_elaborate').insert(risultati);
                 if (errSave) {
                     console.error('Errore salvataggio Supabase:', errSave);
-                    alert('Errore durante il salvataggio su Supabase: ' + errSave.message);
-                } else {
-                    alert('Elaborazione salvata con successo sul Cloud!');
+                    alert('Errore nel salvataggio del report su Cloud: ' + errSave.message);
+                    return;
                 }
+                alert('Elaborazione completata e salvata correttamente sul Cloud!');
             }
 
             datiTabellaCorrenti = risultati;
@@ -370,9 +381,9 @@ document.getElementById('btnElabora').addEventListener('click', async () => {
     };
 
     reader.readAsArrayBuffer(file);
-});
+}
 
-// 7. RENDER TABELLA SCHERMO
+// 6. RENDER TABELLA A SCHERMO
 function renderTabella(dati) {
     const tbody = document.getElementById('tableBody');
     if (!tbody) return;
@@ -432,7 +443,7 @@ function renderTabella(dati) {
     }
 }
 
-// 8. ESPORTAZIONE TABELLA IN FILE EXCEL (.XLSX)
+// 7. ESPORTAZIONE TABELLA IN FILE EXCEL (.XLSX)
 function scaricaReportExcel() {
     if (!datiTabellaCorrenti || datiTabellaCorrenti.length === 0) {
         alert('Nessun dato visibile da scaricare!');
