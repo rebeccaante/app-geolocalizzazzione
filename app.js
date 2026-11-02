@@ -73,6 +73,11 @@ document.addEventListener('DOMContentLoaded', () => {
         selectMese.addEventListener('change', caricaReportDaDatabase);
     }
 
+    const btnScarica = document.getElementById('btnScaricaReport');
+    if (btnScarica) {
+        btnScarica.addEventListener('click', scaricaReportExcel);
+    }
+
     caricaReportDaDatabase();
     caricaAnagrafica();
 });
@@ -140,7 +145,6 @@ async function caricaReportDaDatabase() {
     const anno = parseInt(document.getElementById('selectAnno').value);
 
     try {
-        // Cerca il report per anno e mese
         const { data: reports, error: errRep } = await _supabase
             .from('report_mensili')
             .select('id')
@@ -155,7 +159,6 @@ async function caricaReportDaDatabase() {
 
         const reportId = reports[0].id;
 
-        // Recupera le timbrature salvate per questo specifico report
         const { data: timbrature, error: errTimb } = await _supabase
             .from('timbrature_elaborate')
             .select('*')
@@ -209,7 +212,6 @@ document.getElementById('btnElabora').addEventListener('click', async () => {
             const mese = parseInt(document.getElementById('selectMese').value);
             const anno = parseInt(document.getElementById('selectAnno').value);
 
-            // Cerca o crea la riga in report_mensili
             let { data: reports } = await _supabase.from('report_mensili').select('id').eq('anno', anno).eq('mese', mese);
             let reportId = null;
 
@@ -282,12 +284,11 @@ document.getElementById('btnElabora').addEventListener('click', async () => {
                         const diffMs = dtOut - dtIn;
                         let oreGrezze = diffMs / (1000 * 60 * 60);
 
-                        // NOTTURNO DALLE 21:00 IN POI (O OVERNIGHT)
                         const oraIngresso = dtIn.getHours();
                         const isNotturno = (oraIngresso >= 21 || oraIngresso < 5) || (dtIn.getDate() !== dtOut.getDate());
 
                         if (!isNotturno && oreGrezze > 4.0) {
-                            oreGrezze = Math.max(0, oreGrezze - 0.5); // Detrazione 30 min pausa pranzo
+                            oreGrezze = Math.max(0, oreGrezze - 0.5);
                         }
 
                         const oreEffettuate = Math.round(oreGrezze * 100) / 100;
@@ -345,18 +346,19 @@ document.getElementById('btnElabora').addEventListener('click', async () => {
                 }
             }
 
-            // Cancella i vecchi dati di quel mese prima di salvare quelli nuovi
             if (risultati.length > 0) {
                 await _supabase.from('timbrature_elaborate').delete().eq('report_id', reportId);
                 const { error: errSave } = await _supabase.from('timbrature_elaborate').insert(risultati);
                 if (errSave) {
                     console.error('Errore salvataggio Supabase:', errSave);
+                    alert('Errore durante il salvataggio su Supabase: ' + errSave.message);
+                } else {
+                    alert('Elaborazione salvata con successo sul Cloud!');
                 }
             }
 
             datiTabellaCorrenti = risultati;
             renderTabella(datiTabellaCorrenti);
-            alert('Elaborazione salvata con successo sul Cloud!');
 
         } catch (err) {
             console.error(err);
@@ -373,12 +375,14 @@ document.getElementById('btnElabora').addEventListener('click', async () => {
 // 7. RENDER TABELLA SCHERMO
 function renderTabella(dati) {
     const tbody = document.getElementById('tableBody');
+    if (!tbody) return;
     tbody.innerHTML = '';
     let sommaTarget = 0, sommaEffettuate = 0, cntTarget = 0, cntEffettuate = 0;
 
     if (!dati || dati.length === 0) {
         tbody.innerHTML = `<tr><td colspan="11" class="p-6 text-center text-slate-400">Nessun report salvato per questo mese/anno. Carica un file Excel per elaborare.</td></tr>`;
-        document.getElementById('tableFooter').innerHTML = '';
+        const tfoot = document.getElementById('tableFooter');
+        if (tfoot) tfoot.innerHTML = '';
         return;
     }
 
@@ -386,7 +390,7 @@ function renderTabella(dati) {
         const tr = document.createElement('tr');
         if (riga.errore_timbratura) tr.classList.add('bg-red-50');
 
-        let cantiereHtml = riga.luogo_cantiere;
+        let cantiereHtml = riga.luogo_cantiere || '-';
         if (riga.luogo_cantiere && riga.luogo_cantiere.startsWith('http')) {
             cantiereHtml = `<a href="${riga.luogo_cantiere}" target="_blank" class="text-blue-600 underline font-medium">Apri Mappa 📍</a>`;
         }
@@ -416,25 +420,28 @@ function renderTabella(dati) {
     const mediaEffettuate = cntEffettuate > 0 ? (sommaEffettuate / cntEffettuate).toFixed(2) : 0;
 
     const tfoot = document.getElementById('tableFooter');
-    tfoot.innerHTML = `
-        <tr>
-            <td colspan="8" class="p-3 text-right uppercase tracking-wider font-semibold">Media Totale Tutti i Dipendenti:</td>
-            <td class="p-3 text-center text-yellow-300 text-base font-bold">${mediaTarget} h</td>
-            <td class="p-3 text-center text-green-300 text-base font-bold">${mediaEffettuate} h</td>
-            <td></td>
-        </tr>
-    `;
+    if (tfoot) {
+        tfoot.innerHTML = `
+            <tr>
+                <td colspan="8" class="p-3 text-right uppercase tracking-wider font-semibold">Media Totale Tutti i Dipendenti:</td>
+                <td class="p-3 text-center text-yellow-300 text-base font-bold">${mediaTarget} h</td>
+                <td class="p-3 text-center text-green-300 text-base font-bold">${mediaEffettuate} h</td>
+                <td></td>
+            </tr>
+        `;
+    }
 }
 
 // 8. ESPORTAZIONE TABELLA IN FILE EXCEL (.XLSX)
-document.getElementById('btnScaricaReport').addEventListener('click', () => {
+function scaricaReportExcel() {
     if (!datiTabellaCorrenti || datiTabellaCorrenti.length === 0) {
         alert('Nessun dato visibile da scaricare!');
         return;
     }
 
-    const mese = document.getElementById('selectMese').options[document.getElementById('selectMese').selectedIndex].text;
-    const anno = document.getElementById('selectAnno').value;
+    const selectMese = document.getElementById('selectMese');
+    const mese = selectMese ? selectMese.options[selectMese.selectedIndex].text : 'Report';
+    const anno = document.getElementById('selectAnno') ? document.getElementById('selectAnno').value : '2026';
 
     const datiExcel = datiTabellaCorrenti.map(r => ({
         'Dipendente': r.dipendente,
@@ -455,4 +462,4 @@ document.getElementById('btnScaricaReport').addEventListener('click', () => {
     XLSX.utils.book_append_sheet(workbook, worksheet, `Report ${mese} ${anno}`);
 
     XLSX.writeFile(workbook, `Report_Presenze_${mese}_${anno}.xlsx`);
-});
+}
